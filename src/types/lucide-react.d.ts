@@ -16,4 +16,3 @@ declare module "lucide-react" {
 
   export default {} as { [key: string]: React.FC<LucideProps> };
 }
-

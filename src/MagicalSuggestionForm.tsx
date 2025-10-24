@@ -16,7 +16,7 @@ export function MagicalSuggestionForm() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     if (!title.trim() || !description.trim()) {
       toast.error("Please fill in your magical idea and description!");
       return;
@@ -30,11 +30,11 @@ export function MagicalSuggestionForm() {
         authorName: authorName.trim() || undefined,
         authorEmail: authorEmail.trim() || undefined,
       });
-      
+
       // Show confetti celebration
       setShowConfetti(true);
       toast.success("✨ Your magical idea has been captured!");
-      
+
       // Clear form
       setTitle("");
       setDescription("");
@@ -55,7 +55,7 @@ export function MagicalSuggestionForm() {
   return (
     <>
       <Confetti isActive={showConfetti} onComplete={handleConfettiComplete} />
-      
+
       <div className="max-w-2xl mx-auto mt-12">
         <div className="text-center mb-8">
           <h1 className="text-5xl font-bold text-white mb-4 animate-pulse">
@@ -69,7 +69,10 @@ export function MagicalSuggestionForm() {
         <div className="bg-white/10 backdrop-blur-md rounded-3xl p-8 border border-white/20 shadow-2xl magical-glow">
           <form onSubmit={handleSubmit} className="space-y-6">
             <div className="space-y-2">
-              <label htmlFor="title" className="block text-lg font-medium text-white">
+              <label
+                htmlFor="title"
+                className="block text-lg font-medium text-white"
+              >
                 Your Magical Idea
               </label>
               <input
@@ -84,7 +87,10 @@ export function MagicalSuggestionForm() {
             </div>
 
             <div className="space-y-2">
-              <label htmlFor="description" className="block text-lg font-medium text-white">
+              <label
+                htmlFor="description"
+                className="block text-lg font-medium text-white"
+              >
                 Tell us more about your magic
               </label>
               <textarea
@@ -100,7 +106,10 @@ export function MagicalSuggestionForm() {
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
-                <label htmlFor="name" className="block text-lg font-medium text-white">
+                <label
+                  htmlFor="name"
+                  className="block text-lg font-medium text-white"
+                >
                   Your name (optional)
                 </label>
                 <input
@@ -115,7 +124,10 @@ export function MagicalSuggestionForm() {
               </div>
 
               <div className="space-y-2">
-                <label htmlFor="email" className="block text-lg font-medium text-white">
+                <label
+                  htmlFor="email"
+                  className="block text-lg font-medium text-white"
+                >
                   Your email (optional)
                 </label>
                 <input

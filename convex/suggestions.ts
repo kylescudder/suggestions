@@ -17,12 +17,9 @@ export const listByStatus = query({
   args: { status: v.optional(v.string()) },
   handler: async (ctx, args) => {
     if (!args.status) {
-      return await ctx.db
-        .query("suggestions")
-        .order("desc")
-        .collect();
+      return await ctx.db.query("suggestions").order("desc").collect();
     }
-    
+
     return await ctx.db
       .query("suggestions")
       .withIndex("by_status", (q) => q.eq("status", args.status!))
@@ -41,7 +38,7 @@ export const create = mutation({
   handler: async (ctx, args) => {
     const userId = await getAuthUserId(ctx);
     let user = null;
-    
+
     if (userId) {
       user = await ctx.db.get(userId);
     }
@@ -77,13 +74,13 @@ export const getStats = query({
   args: {},
   handler: async (ctx) => {
     const suggestions = await ctx.db.query("suggestions").collect();
-    
+
     return {
       all: suggestions.length,
-      pending: suggestions.filter((s) => s.status === 'pending').length,
-      reviewed: suggestions.filter((s) => s.status === 'reviewed').length,
-      implemented: suggestions.filter((s) => s.status === 'implemented').length,
-      rejected: suggestions.filter((s) => s.status === 'rejected').length,
+      pending: suggestions.filter((s) => s.status === "pending").length,
+      reviewed: suggestions.filter((s) => s.status === "reviewed").length,
+      implemented: suggestions.filter((s) => s.status === "implemented").length,
+      rejected: suggestions.filter((s) => s.status === "rejected").length,
     };
   },
 });
