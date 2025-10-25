@@ -16,7 +16,7 @@
   "dependencies": {
     "@convex-dev/auth": "0.0.90",
     "clsx": "2.1.1",
-    "convex": "1.24.2",
+    "convex": "1.28.0",
     "lucide-react": "0.547.0",
     "react": "19.0.0",
     "react-dom": "19.0.0",
