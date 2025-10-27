@@ -36,7 +36,7 @@
     "eslint-plugin-react-refresh": "0.4.24",
     "globals": "16.4.0",
     "husky": "9.1.7",
-    "npm-run-all2": "5.0.2",
+    "npm-run-all2": "8.0.4",
     "postcss": "~8",
     "prettier": "3.6.2",
     "tailwindcss": "~3",
