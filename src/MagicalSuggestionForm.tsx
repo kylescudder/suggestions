@@ -80,7 +80,7 @@ export function MagicalSuggestionForm() {
                 id="title"
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
-                className="w-full px-4 py-3 bg-white/20 border border-white/30 rounded-xl text-white placeholder-purple-200 focus:outline-none focus:ring-2 focus:ring-purple-400 focus:border-transparent backdrop-blur-sm transition-all duration-300"
+                className="w-full px-4 py-3 bg-white/20 border border-white/30 rounded-xl text-white placeholder-purple-200 focus:outline-hidden focus:ring-2 focus:ring-purple-400 focus:border-transparent backdrop-blur-xs transition-all duration-300"
                 placeholder="What's your brilliant idea? ✨"
                 disabled={isSubmitting}
               />
@@ -98,7 +98,7 @@ export function MagicalSuggestionForm() {
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
                 rows={4}
-                className="w-full px-4 py-3 bg-white/20 border border-white/30 rounded-xl text-white placeholder-purple-200 focus:outline-none focus:ring-2 focus:ring-purple-400 focus:border-transparent backdrop-blur-sm transition-all duration-300 resize-none"
+                className="w-full px-4 py-3 bg-white/20 border border-white/30 rounded-xl text-white placeholder-purple-200 focus:outline-hidden focus:ring-2 focus:ring-purple-400 focus:border-transparent backdrop-blur-xs transition-all duration-300 resize-none"
                 placeholder="Describe your magical vision in detail..."
                 disabled={isSubmitting}
               />
@@ -117,7 +117,7 @@ export function MagicalSuggestionForm() {
                   id="name"
                   value={authorName}
                   onChange={(e) => setAuthorName(e.target.value)}
-                  className="w-full px-4 py-3 bg-white/20 border border-white/30 rounded-xl text-white placeholder-purple-200 focus:outline-none focus:ring-2 focus:ring-purple-400 focus:border-transparent backdrop-blur-sm transition-all duration-300"
+                  className="w-full px-4 py-3 bg-white/20 border border-white/30 rounded-xl text-white placeholder-purple-200 focus:outline-hidden focus:ring-2 focus:ring-purple-400 focus:border-transparent backdrop-blur-xs transition-all duration-300"
                   placeholder="Your magical name"
                   disabled={isSubmitting}
                 />
@@ -135,7 +135,7 @@ export function MagicalSuggestionForm() {
                   id="email"
                   value={authorEmail}
                   onChange={(e) => setAuthorEmail(e.target.value)}
-                  className="w-full px-4 py-3 bg-white/20 border border-white/30 rounded-xl text-white placeholder-purple-200 focus:outline-none focus:ring-2 focus:ring-purple-400 focus:border-transparent backdrop-blur-sm transition-all duration-300"
+                  className="w-full px-4 py-3 bg-white/20 border border-white/30 rounded-xl text-white placeholder-purple-200 focus:outline-hidden focus:ring-2 focus:ring-purple-400 focus:border-transparent backdrop-blur-xs transition-all duration-300"
                   placeholder="your@email.com"
                   disabled={isSubmitting}
                 />
@@ -145,7 +145,7 @@ export function MagicalSuggestionForm() {
             <button
               type="submit"
               disabled={isSubmitting || !title.trim() || !description.trim()}
-              className="w-full bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 text-white font-bold py-4 px-6 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-400 focus:ring-offset-2 focus:ring-offset-transparent disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-300 transform hover:scale-105 magical-button"
+              className="w-full bg-linear-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 text-white font-bold py-4 px-6 rounded-xl focus:outline-hidden focus:ring-2 focus:ring-purple-400 focus:ring-offset-2 focus:ring-offset-transparent disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-300 transform hover:scale-105 magical-button"
             >
               {isSubmitting ? (
                 <span className="flex items-center justify-center gap-2">

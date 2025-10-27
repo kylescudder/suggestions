@@ -13,7 +13,7 @@ export default function App() {
   const loggedInUser = useQuery(api.auth.loggedInUser);
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-purple-900 via-blue-900 to-indigo-900 relative overflow-hidden">
+    <div className="min-h-screen bg-linear-to-br from-purple-900 via-blue-900 to-indigo-900 relative overflow-hidden">
       {/* Animated background sparkles */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
         <div className="sparkle sparkle-1"></div>
@@ -35,7 +35,7 @@ export default function App() {
             <Authenticated>
               <button
                 onClick={() => setShowAdmin(!showAdmin)}
-                className="px-4 py-2 bg-white/20 hover:bg-white/30 text-white rounded-lg transition-all duration-300 backdrop-blur-sm border border-white/30"
+                className="px-4 py-2 bg-white/20 hover:bg-white/30 text-white rounded-lg transition-all duration-300 backdrop-blur-xs border border-white/30"
               >
                 {showAdmin ? "Public View" : "Admin Dashboard"}
               </button>
@@ -44,7 +44,7 @@ export default function App() {
             <Unauthenticated>
               <button
                 onClick={() => setShowAdmin(!showAdmin)}
-                className="flex items-center gap-2 px-4 py-2 bg-white/20 hover:bg-white/30 text-white rounded-lg transition-all duration-300 backdrop-blur-sm border border-white/30"
+                className="flex items-center gap-2 px-4 py-2 bg-white/20 hover:bg-white/30 text-white rounded-lg transition-all duration-300 backdrop-blur-xs border border-white/30"
               >
                 <Shield className="w-4 h-4" />
                 <span>Admin</span>

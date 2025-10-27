@@ -196,7 +196,7 @@ export function AdminDashboard() {
                     onChange={(e) =>
                       handleStatusChange(suggestion._id, e.target.value)
                     }
-                    className="bg-white/20 border border-white/30 rounded-lg px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-purple-400 backdrop-blur-sm"
+                    className="bg-white/20 border border-white/30 rounded-lg px-3 py-2 text-white focus:outline-hidden focus:ring-2 focus:ring-purple-400 backdrop-blur-xs"
                   >
                     <option value="pending" className="bg-gray-800">
                       Pending
