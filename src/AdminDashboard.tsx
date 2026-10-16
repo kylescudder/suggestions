@@ -1,24 +1,39 @@
-import { useQuery, useMutation } from "convex/react";
-import { api } from "../convex/_generated/api";
-import { Id } from "../convex/_generated/dataModel";
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { api, type Stats, type Suggestion } from "./api";
 import { toast } from "sonner";
 import { Hourglass, Eye, CheckCircle2, XCircle, Sparkles } from "lucide-react";
 
 export function AdminDashboard() {
   const [selectedStatus, setSelectedStatus] = useState<string>("");
-  const suggestions = useQuery(api.suggestions.listByStatus, {
-    status: selectedStatus || undefined,
-  });
-  const stats = useQuery(api.suggestions.getStats);
-  const updateStatus = useMutation(api.suggestions.updateStatus);
+  const [suggestions, setSuggestions] = useState<Suggestion[]>();
+  const [stats, setStats] = useState<Stats>();
+
+  const [reloadKey, setReloadKey] = useState(0);
+  const [loadError, setLoadError] = useState<string>();
+
+  useEffect(() => {
+    Promise.all([
+      api.listSuggestions(selectedStatus || undefined),
+      api.getStats(),
+    ]).then(
+      ([list, counts]) => {
+        setSuggestions(list);
+        setStats(counts);
+      },
+      (error: Error) => {
+        setLoadError(error.message);
+        console.error(error);
+      },
+    );
+  }, [selectedStatus, reloadKey]);
 
   const handleStatusChange = async (
-    suggestionId: Id<"suggestions">,
+    suggestionId: number,
     newStatus: string,
   ) => {
     try {
-      await updateStatus({ suggestionId, status: newStatus });
+      await api.updateStatus(suggestionId, newStatus);
+      setReloadKey((k) => k + 1);
       toast.success("Status updated successfully!");
     } catch (error) {
       toast.error("Failed to update status");
@@ -51,6 +66,16 @@ export function AdminDashboard() {
         return <Hourglass className="w-4 h-4" />;
     }
   };
+
+  if (loadError) {
+    return (
+      <p className="text-center text-white text-xl py-20">
+        {loadError === "Not an admin"
+          ? "Your account doesn't have admin access."
+          : "Failed to load suggestions."}
+      </p>
+    );
+  }
 
   if (suggestions === undefined || stats === undefined) {
     return (
@@ -165,7 +190,7 @@ export function AdminDashboard() {
         <div className="space-y-4">
           {suggestions.map((suggestion) => (
             <div
-              key={suggestion._id}
+              key={suggestion.id}
               className="bg-white/10 backdrop-blur-md rounded-xl p-6 border border-white/20 magical-glow"
             >
               <div className="flex justify-between items-start mb-4">
@@ -180,7 +205,7 @@ export function AdminDashboard() {
                       {getStatusIcon(suggestion.status)} {suggestion.status}
                     </span>
                     <span className="text-purple-200 text-sm">
-                      {new Date(suggestion._creationTime).toLocaleDateString()}
+                      {new Date(suggestion.createdAt).toLocaleDateString()}
                     </span>
                   </div>
                   {(suggestion.authorName || suggestion.authorEmail) && (
@@ -194,7 +219,7 @@ export function AdminDashboard() {
                   <select
                     value={suggestion.status}
                     onChange={(e) =>
-                      handleStatusChange(suggestion._id, e.target.value)
+                      handleStatusChange(suggestion.id, e.target.value)
                     }
                     className="bg-white/20 border border-white/30 rounded-lg px-3 py-2 text-white focus:outline-hidden focus:ring-2 focus:ring-purple-400 backdrop-blur-xs"
                   >

@@ -1,7 +1,4 @@
-import { Authenticated, Unauthenticated, useQuery } from "convex/react";
-import { api } from "../convex/_generated/api";
-import { SignInForm } from "./SignInForm";
-import { SignOutButton } from "./SignOutButton";
+import { SignIn, UserButton, useAuth } from "@clerk/react";
 import { Toaster } from "sonner";
 import { MagicalSuggestionForm } from "./MagicalSuggestionForm";
 import { AdminDashboard } from "./AdminDashboard";
@@ -10,7 +7,7 @@ import { Shield, Sparkles } from "lucide-react";
 
 export default function App() {
   const [showAdmin, setShowAdmin] = useState(false);
-  const loggedInUser = useQuery(api.auth.loggedInUser);
+  const { isSignedIn } = useAuth();
 
   return (
     <div className="min-h-screen bg-linear-to-br from-purple-900 via-blue-900 to-indigo-900 relative overflow-hidden">
@@ -32,16 +29,17 @@ export default function App() {
           </h1>
 
           <div className="flex items-center gap-4">
-            <Authenticated>
-              <button
-                onClick={() => setShowAdmin(!showAdmin)}
-                className="px-4 py-2 bg-white/20 hover:bg-white/30 text-white rounded-lg transition-all duration-300 backdrop-blur-xs border border-white/30"
-              >
-                {showAdmin ? "Public View" : "Admin Dashboard"}
-              </button>
-              <SignOutButton />
-            </Authenticated>
-            <Unauthenticated>
+            {isSignedIn ? (
+              <>
+                <button
+                  onClick={() => setShowAdmin(!showAdmin)}
+                  className="px-4 py-2 bg-white/20 hover:bg-white/30 text-white rounded-lg transition-all duration-300 backdrop-blur-xs border border-white/30"
+                >
+                  {showAdmin ? "Public View" : "Admin Dashboard"}
+                </button>
+                <UserButton />
+              </>
+            ) : (
               <button
                 onClick={() => setShowAdmin(!showAdmin)}
                 className="flex items-center gap-2 px-4 py-2 bg-white/20 hover:bg-white/30 text-white rounded-lg transition-all duration-300 backdrop-blur-xs border border-white/30"
@@ -49,30 +47,25 @@ export default function App() {
                 <Shield className="w-4 h-4" />
                 <span>Admin</span>
               </button>
-            </Unauthenticated>
+            )}
           </div>
         </div>
       </header>
 
       <main className="relative z-10 flex-1 p-8">
-        <Authenticated>
-          {showAdmin ? <AdminDashboard /> : <MagicalSuggestionForm />}
-        </Authenticated>
-
-        <Unauthenticated>
-          {showAdmin ? (
-            <div className="max-w-md mx-auto mt-20">
-              <div className="bg-white/10 backdrop-blur-md rounded-2xl p-8 border border-white/20">
-                <h2 className="text-2xl font-bold text-white text-center mb-6">
-                  Admin Login
-                </h2>
-                <SignInForm />
-              </div>
-            </div>
+        {isSignedIn ? (
+          showAdmin ? (
+            <AdminDashboard />
           ) : (
             <MagicalSuggestionForm />
-          )}
-        </Unauthenticated>
+          )
+        ) : showAdmin ? (
+          <div className="flex justify-center mt-20">
+            <SignIn routing="hash" />
+          </div>
+        ) : (
+          <MagicalSuggestionForm />
+        )}
       </main>
 
       <Toaster />
