@@ -6,10 +6,11 @@
   "scripts": {
     "dev": "npm-run-all --parallel dev:frontend dev:backend",
     "dev:frontend": "vite --open",
-    "dev:backend": "bun --watch server/index.ts",
+    "dev:backend": "bun run migrate && bun --watch server/index.ts",
     "build": "vite build",
     "start": "NODE_ENV=production bun server/index.ts",
-    "lint": "tsc -p server --pretty false && tsc -p . -noEmit --pretty false && vite build",
+    "migrate": "bun server/migrate.ts",
+    "lint": "tsc -p server --pretty false && tsc -p tsconfig.app.json --pretty false && tsc -p tsconfig.node.json --pretty false && vite build",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "prepare": "husky"

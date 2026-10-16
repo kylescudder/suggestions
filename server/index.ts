@@ -1,7 +1,7 @@
 import { Hono, type Context, type Next } from "hono";
 import { serveStatic } from "hono/bun";
 import { createClerkClient } from "@clerk/backend";
-import { migrate, sql } from "./db";
+import { sql } from "./db";
 
 const STATUSES = ["pending", "reviewed", "implemented", "rejected"];
 
@@ -36,8 +36,6 @@ async function isAdmin(userId: string) {
 }
 
 type Env = { Variables: { userId: string | null } };
-
-await migrate();
 
 const app = new Hono<Env>();
 
