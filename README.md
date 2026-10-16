@@ -1,30 +1,21 @@
 # Suggestions
 
-This is a project built with [Chef](https://chef.convex.dev) using [Convex](https://convex.dev) as its backend.
-You can find docs about Chef with useful information like how to deploy to production [here](https://docs.convex.dev/chef).
+A React + Vite frontend with a small [Hono](https://hono.dev) API server running on [Bun](https://bun.sh), backed by Postgres, with auth by [Clerk](https://clerk.com).
 
-This project is connected to the Convex deployment named [`third-stork-431`](https://dashboard.convex.dev/d/third-stork-431).
+## Setup
 
-## Project structure
+1. Copy `.env.example` to `.env` and fill it in (Bun and Vite both load `.env`):
+   - `DATABASE_URL` for your Postgres database
+   - Clerk publishable/secret keys from the Clerk dashboard
+   - `ADMIN_EMAILS`: verified email addresses allowed into the admin dashboard
+2. `bun install`
 
-The frontend code is in the `app` directory and is built with [Vite](https://vitejs.dev/).
+The schema in `server/schema.sql` is applied automatically when the server starts.
 
-The backend code is in the `convex` directory.
+## Development
 
-`npm run dev` will start the frontend and backend servers.
+`bun run dev` starts Vite and the API server (port 3001). Vite proxies `/api` to the server.
 
-## App authentication
+## Production
 
-Chef apps use [Convex Auth](https://auth.convex.dev/) with Anonymous auth for easy sign in. You may wish to change this before deploying your app.
-
-## Developing and deploying your app
-
-Check out the [Convex docs](https://docs.convex.dev/) for more information on how to develop with Convex.
-
-- If you're new to Convex, the [Overview](https://docs.convex.dev/understanding/) is a good place to start
-- Check out the [Hosting and Deployment](https://docs.convex.dev/production/) docs for how to deploy your app
-- Read the [Best Practices](https://docs.convex.dev/understanding/best-practices/) guide for tips on how to improve you app further
-
-## HTTP API
-
-User-defined http routes are defined in the `convex/router.ts` file. We split these routes into a separate file from `convex/http.ts` to allow us to prevent the LLM from modifying the authentication routes.
+`bun run build && bun run start` — the API server also serves the built frontend from `dist/`.

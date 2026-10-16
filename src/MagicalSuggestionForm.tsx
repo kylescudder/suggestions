@@ -1,6 +1,5 @@
 import { useState } from "react";
-import { useMutation } from "convex/react";
-import { api } from "../convex/_generated/api";
+import { api } from "./api";
 import { toast } from "sonner";
 import { Confetti } from "./Confetti";
 
@@ -12,8 +11,6 @@ export function MagicalSuggestionForm() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showConfetti, setShowConfetti] = useState(false);
 
-  const createSuggestion = useMutation(api.suggestions.create);
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
@@ -24,7 +21,7 @@ export function MagicalSuggestionForm() {
 
     setIsSubmitting(true);
     try {
-      await createSuggestion({
+      await api.createSuggestion({
         title: title.trim(),
         description: description.trim(),
         authorName: authorName.trim() || undefined,
