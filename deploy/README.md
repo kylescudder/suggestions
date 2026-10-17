@@ -41,7 +41,7 @@ python3 /Users/kyle/platform/scripts/provision-project.py suggestions
 Create `.env` with mode 0600, using unquoted, single-line values:
 
 ```dotenv
-DATABASE_URL=postgres://proj_suggestions_runtime:<runtime-password>@postgres:5432/proj_suggestions
+DATABASE_URL=postgres://suggestions_runtime:<runtime-password>@postgres:5432/suggestions
 PORT=3001
 VITE_CLERK_PUBLISHABLE_KEY=<Clerk publishable key>
 CLERK_PUBLISHABLE_KEY=<same Clerk publishable key>

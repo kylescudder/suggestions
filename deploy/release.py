@@ -69,7 +69,7 @@ def main():
             raise SystemExit("Frontend and backend Clerk publishable keys must match")
         database = urlparse(config["DATABASE_URL"])
         if (database.hostname, database.username, database.path) != (
-            "postgres", "proj_suggestions_runtime", "/proj_suggestions"
+            "postgres", "suggestions_runtime", "/suggestions"
         ):
             raise SystemExit("DATABASE_URL must use Suggestions' restricted Herman runtime role")
         stamp = datetime.datetime.now(datetime.timezone.utc).strftime("%Y%m%d%H%M%S")
@@ -80,8 +80,8 @@ def main():
         owner = (PLATFORM / "projects/suggestions/owner-password").read_text().strip()
         with tempfile.TemporaryDirectory(prefix="suggestions-migration-") as directory:
             migration = Path(directory) / "migration.env"
-            atomic_write(migration, "DATABASE_URL=postgres://proj_suggestions_owner:" +
-                         quote(owner, safe="") + "@postgres:5432/proj_suggestions\n")
+            atomic_write(migration, "DATABASE_URL=postgres://suggestions_owner:" +
+                         quote(owner, safe="") + "@postgres:5432/suggestions\n")
             run("docker", "run", "--rm", "--network", "platform-db", "--env-file",
                 str(migration), image, "bun", "server/migrate.ts")
 
