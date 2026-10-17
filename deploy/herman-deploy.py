@@ -129,7 +129,17 @@ def pin(image):
 
 def start(image):
     compose('up', '-d', '--no-build', '--pull', 'never', '--wait', '--wait-timeout', '120', 'suggestions', image=image)
+    verify(image)
+
+
+def verify(image):
     compose('exec', '-T', 'suggestions', 'bun', 'deploy/verify.ts', image=image)
+
+
+def publish_status(image, revision):
+    directory = STATE / 'public'
+    directory.mkdir(mode=0o700, exist_ok=True)
+    save_json(directory / 'deployment.json', {'revision':revision, 'image':image})
 
 
 def inspect_current(container):
@@ -212,7 +222,9 @@ def deploy(digest, requested_revision=None, registry_token=None):
         if not REVISION.fullmatch(revision) or requested_revision and requested_revision != revision:
             raise Error('Running image revision does not match the request.')
         log('requested digest is already healthy')
+        verify(candidate)
         pin(candidate)
+        publish_status(candidate, revision)
         return
     log(f'verifying {candidate}')
     with registry_credentials(registry_token) as registry_env:
@@ -252,6 +264,7 @@ def deploy(digest, requested_revision=None, registry_token=None):
               'revision':revision, 'previous_image':running,
               'previous_revision':(current['Config'].get('Labels') or {}).get('org.opencontainers.image.revision') if current else None,
               'hostname':'suggestions.kylescudder.co.uk'})
+    publish_status(candidate, revision)
     log(f'healthy on {candidate}')
 
 

@@ -56,9 +56,13 @@ verifies repository, workflow and main-branch image provenance, saves a database
 dump, runs owner migrations, then starts the immutable image. Failed application
 checks restore the previous image. Runtime credentials remain restricted.
 
-The workflow waits for `/api/me` to report the exact commit in
-`X-Suggestions-Revision`; this is an existing API route, not a public health
-endpoint. `DEPLOY_ENABLED=true` and
+The workflow waits for the host's completed acceptance record over an
+Access-protected GET to the same webhook path, matching both commit and image
+digest, and for `/api/me` to report that commit in `X-Suggestions-Revision`.
+The receiver sees only a read-only `state/public/` mount containing acceptance
+metadata. The host publishes that record after database/API checks finish;
+a responding candidate alone cannot make CI report success.
+`DEPLOY_ENABLED=true` and
 `SUGGESTIONS_BASE_URL=https://suggestions.kylescudder.co.uk` control deployment.
 `VITE_CLERK_PUBLISHABLE_KEY` is a repository variable baked into the frontend.
 

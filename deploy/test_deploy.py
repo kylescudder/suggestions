@@ -90,7 +90,6 @@ class Deploy(unittest.TestCase):
 
     def fake_compose(self,*args,**kwargs):
         if args[0]=='ps':return b'container\n'
-        if args[0]=='exec':kwargs['output'].write(b'{"films":[]}')
         return b''
 
     def test_failed_verification_never_migrates_or_starts(self):
@@ -172,6 +171,17 @@ class Deploy(unittest.TestCase):
                 config=Path(env['DOCKER_CONFIG'])/'config.json'
                 raise module.Error('registry unavailable')
         self.assertFalse(config.exists())
+
+    def test_healthy_container_is_not_acknowledged_when_api_checks_fail(self):
+        current={'Config':{'Image':module.IMAGE+'@'+D,'Labels':{'org.opencontainers.image.revision':R}},
+                 'State':{'Running':True,'Health':{'Status':'healthy'}}}
+        raw='|'.join(json.dumps(v) for v in [current['Config']['Image'],current['State'],current['Config']['Labels']]).encode()
+        def compose(*args,**kwargs):
+            if args[0]=='exec':raise module.Error('API acceptance failed')
+            return self.fake_compose(*args,**kwargs)
+        with patch.object(module,'run',return_value=raw),patch.object(module,'compose',compose):
+            with self.assertRaises(module.Error):module.deploy(D,R)
+        self.assertFalse((module.STATE/'public/deployment.json').exists())
 
     def test_registry_credentials_preserve_an_explicit_docker_endpoint(self):
         with patch.dict(os.environ,{'DOCKER_HOST':'unix:///existing-endpoint.sock'}):

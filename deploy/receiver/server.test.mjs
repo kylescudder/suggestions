@@ -19,6 +19,7 @@ test("receiver enforces signature, timestamp, size, exact path and queue limit",
   const directory = mkdtempSync(join(tmpdir(), "suggestions-hook-test-"));
   const secret = "isolated-test-fixture-signing-key-only";
   for (const sub of ["tmp", "requests"]) mkdirSync(join(directory, sub));
+  mkdirSync(join(directory, "release-state"));
   writeFileSync(join(directory, "secret"), secret, { mode: 0o600 });
   const child = spawn(
     process.execPath,
@@ -29,6 +30,11 @@ test("receiver enforces signature, timestamp, size, exact path and queue limit",
         WEBHOOK_SECRET_FILE: join(directory, "secret"),
         SPOOL_DIR: directory,
         PORT: "19000",
+        DEPLOYED_STATE_FILE: join(
+          directory,
+          "release-state",
+          "deployment.json",
+        ),
       },
       stdio: ["ignore", "pipe", "pipe"],
     },
@@ -85,6 +91,9 @@ test("receiver enforces signature, timestamp, size, exact path and queue limit",
     for (const path of ["/", "/other", "/hooks/suggestions?x=1"])
       assert.equal((await send(body, signed(body), path)).status, 404);
     assert.equal((await fetch("http://127.0.0.1:19000/healthz")).status, 200);
+    const releaseStatus = async () =>
+      (await fetch("http://127.0.0.1:19000/hooks/suggestions")).json();
+    assert.deepEqual(await releaseStatus(), { status: "pending" });
     assert.equal((await send(body, signed(body))).status, 202);
     assert.equal(readdirSync(join(directory, "requests")).length, 1);
     const queued = join(
@@ -97,6 +106,19 @@ test("receiver enforces signature, timestamp, size, exact path and queue limit",
       value.registryToken,
     );
     assert.equal(statSync(queued).mode & 0o777, 0o600);
+    assert.deepEqual(await releaseStatus(), { status: "pending" });
+    const accepted = {
+      revision: value.revision,
+      image: "ghcr.io/kylescudder/suggestions@" + value.digest,
+    };
+    writeFileSync(
+      join(directory, "release-state", "deployment.json"),
+      JSON.stringify({ ...accepted, privateField: "must not be returned" }),
+    );
+    assert.deepEqual(await releaseStatus(), {
+      status: "deployed",
+      ...accepted,
+    });
     assert.equal(readdirSync(join(directory, "tmp")).length, 0);
     for (let i = 0; i < 63; i++)
       writeFileSync(join(directory, "requests", `fixture-${i}.json`), "{}");
