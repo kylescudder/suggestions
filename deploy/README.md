@@ -12,9 +12,14 @@ Since 17 October 2026, `https://suggestions.kylescudder.co.uk` serves Herman.
 release is based on `bb9edac`. The one legacy suggestion was imported and verified.
 Kyle requested removal of Netlify on 17 October 2026. The former project
 `amazing-seahorse-f7629b` (site ID `be720617-5e17-4067-b701-cd0b6e0e23b5`)
-was deleted; its Netlify hostname and preview return 404. The Convex source is
-retained, but Netlify is no longer a rollback target. Evidence is
-`/Users/kyle/platform/verification/suggestions-netlify-removal.json`.
+was deleted; its Netlify hostname and preview return 404. The retired Convex
+`suggestions` project was also deleted on 17 October, including development
+`third-stork-431` and the empty, never-deployed production `clever-ant-210`.
+The imported suggestion was verified in Postgres, and a full Convex export was
+downloaded and verified in encrypted NAS backup before deletion. Neither old
+service is a rollback target. Evidence is in the platform's
+`verification/suggestions-netlify-removal.json` and
+`verification/suggestions-convex-removal.json`.
 
 Clerk's `Suggestions` production instance uses
 `clerk.suggestions.kylescudder.co.uk` and
@@ -122,16 +127,18 @@ Schema changes must remain compatible with the previous release for image
 rollback to be safe.
 
 The previous public hostname pointed to `snazzy-suggestion-box.netlify.app`.
-Its retained Convex deployment is `https://third-stork-431.convex.cloud`; one
-rejected suggestion was copied and verified during the initial deployment. On
-a fresh restore or before repeating that cutover, preserve the source using
-the image's `deploy/import-convex.ts` command with that URL as its argument
-and the runtime `.env`, on both `platform-web` and `platform-db` (for example,
-`docker compose run --rm --no-deps suggestions bun deploy/import-convex.ts https://third-stork-431.convex.cloud`).
-It only reads Convex and preserves
-all suggestion fields, creation times and source IDs. Repeating it is safe;
-it refuses to overwrite differing data. Re-run before switching traffic and
-reconcile any differences first.
+Its old backend was the development deployment `third-stork-431`; its single
+rejected suggestion was copied with all source fields and timestamps preserved.
+Both that deployment and the unused production deployment `clever-ant-210` were
+removed with the Convex project on 17 October 2026. The historical
+`deploy/import-convex.ts` utility cannot read the deleted source.
+
+Use the current Postgres dump for recovery. Protected historical snapshots are
+`secrets/convex-pre-herman.json`, `secrets/convex-before-removal.json` and the full
+database/file-storage export `secrets/convex-retirement/third-stork-431-full.zip`.
+The export includes the retired authentication tables; treat it as secret data.
+These snapshots are included in encrypted NAS backup. Do not overwrite current
+Postgres writes with the historical export.
 
 After the container is healthy, register the hostname from the platform root:
 
@@ -148,7 +155,8 @@ hostname tool. The public release and Spooktober were checked afterwards.
 Evidence is `verification/suggestions-cutover.json` in the platform root.
 Future registrations use the managed record normally. The old DNS record is
 historical only: Netlify has been deleted. Never restore that CNAME, force the
-tool past a new conflict or edit its registry. The Convex source remains retained.
+tool past a new conflict or edit its registry. Convex is also deleted; recovery
+uses the retained Herman image or encrypted Postgres backup.
 
 Verify public HTTPS, assets, suggestion submission and signed-out rejection
 of listing/statistics/status updates. Verify an actual Clerk admin sign-in
