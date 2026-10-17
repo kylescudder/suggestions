@@ -1,7 +1,7 @@
 import { Hono, type Context, type Next } from "hono";
 import { serveStatic } from "hono/bun";
 import { createClerkClient } from "@clerk/backend";
-import { migrate, sql } from "./db";
+import { sql } from "./db";
 
 const STATUSES = ["pending", "reviewed", "implemented", "rejected"];
 
@@ -37,9 +37,16 @@ async function isAdmin(userId: string) {
 
 type Env = { Variables: { userId: string | null } };
 
-await migrate();
-
 const app = new Hono<Env>();
+
+app.use("*", async (c, next) => {
+  c.header(
+    "X-Suggestions-Revision",
+    process.env.SUGGESTIONS_REVISION ?? "unknown",
+  );
+  if (c.req.path.startsWith("/api/")) c.header("Cache-Control", "no-store");
+  await next();
+});
 
 app.use("/api/*", async (c, next) => {
   const state = await clerk.authenticateRequest(c.req.raw, {

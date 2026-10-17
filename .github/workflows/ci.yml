@@ -1,0 +1,53 @@
+name: CI
+
+on:
+  pull_request:
+  workflow_call:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:18.6-alpine
+        env:
+          POSTGRES_DB: postgres
+          POSTGRES_USER: postgres
+          # Only this disposable job-local PostgreSQL uses trust authentication.
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports: [5432:5432]
+        options: >-
+          --health-cmd "pg_isready -U postgres -d postgres"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Typecheck and build with the frozen lockfile
+        env:
+          VITE_CLERK_PUBLISHABLE_KEY: ${{ vars.VITE_CLERK_PUBLISHABLE_KEY }}
+        run: docker build --target build --build-arg VITE_CLERK_PUBLISHABLE_KEY -t suggestions:checks .
+      - name: Verify owner migrations and restricted runtime data access
+        run: |
+          docker run --rm --network host \
+            -e TEST_DATABASE_URL=postgres://postgres@127.0.0.1:5432/postgres \
+            suggestions:checks bun deploy/test-database.ts
+      - name: Verify deployment provenance, queue and rollback gates
+        run: python3 -B -m unittest discover -s deploy -p 'test_*.py' -v
+      - name: Verify webhook authentication and queue limits
+        run: |
+          docker run --rm -v "$PWD/deploy/receiver:/app:ro" -w /app \
+            node:22-alpine@sha256:0a7108bf6c7bf5de370ffb1a3ed6be93d405b43ff159f681a8d18c0e2bc2e402 \
+            node --test server.test.mjs
+      - name: Build the production runtime without publishing
+        env:
+          VITE_CLERK_PUBLISHABLE_KEY: ${{ vars.VITE_CLERK_PUBLISHABLE_KEY }}
+        run: docker build --build-arg VITE_CLERK_PUBLISHABLE_KEY --build-arg SUGGESTIONS_REVISION="$GITHUB_SHA" -t suggestions:ci .

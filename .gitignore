@@ -11,6 +11,15 @@ node_modules
 dist
 dist-ssr
 *.local
+.env
+.env.*
+!.env.example
+deployment.json
+secrets/
+__pycache__/
+state/
+backups/
+deploy-spool/
 
 # Editor directories and files
 .vscode/*
