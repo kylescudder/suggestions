@@ -2,6 +2,7 @@
 """Build and release Suggestions on Herman, or restore its previous image."""
 import argparse
 import datetime
+import fcntl
 import json
 import os
 from pathlib import Path
@@ -113,4 +114,7 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    (APP / "state").mkdir(mode=0o700, exist_ok=True)
+    with (APP / "state/deploy.lock").open("a") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        main()

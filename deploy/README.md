@@ -33,7 +33,43 @@ admin identity check, suggestion list and statistics all passed, showing the
 one imported rejected suggestion. Evidence is recorded in
 `/Users/kyle/platform/verification/suggestions-admin-acceptance.json`.
 
-## First deployment
+## Automatic releases
+
+Every push to `main` runs `.github/workflows/release.yml`. CI checks all
+TypeScript and the frontend build, owner migrations and restricted runtime
+database access in disposable PostgreSQL, deployment rollback/provenance gates,
+and receiver signature/path/queue behavior. Native AMD64 and ARM64 builders
+publish `ghcr.io/kylescudder/suggestions` with GitHub provenance. GitHub holds
+only deployment credentials and the public Clerk publishable-key variable;
+Clerk secrets and production database credentials remain on Herman.
+
+The main-only `production` environment sends a signed request through Cloudflare
+Access to `https://deploy-suggestions.kylescudder.co.uk/hooks/suggestions`.
+Caddy exposes only that exact path to `suggestions-deploy-hook:9000`. The
+receiver has no Docker socket, database network or host port: it writes a queue
+consumed by `com.herman.suggestions-deploy` on Herman. The host independently
+verifies repository, workflow and main-branch image provenance, saves a database
+dump, runs owner migrations, then starts the immutable image. Failed application
+checks restore the previous image. Runtime credentials remain restricted.
+
+The workflow waits for `/api/me` to report the exact commit in
+`X-Suggestions-Revision`; this is an existing API route, not a public health
+endpoint. `DEPLOY_ENABLED=true` and
+`SUGGESTIONS_BASE_URL=https://suggestions.kylescudder.co.uk` control deployment.
+`VITE_CLERK_PUBLISHABLE_KEY` is a repository variable baked into the frontend.
+
+Private receiver settings are `.env.deploy-hook` and `secrets/`. Release
+history, queued delivery and failure records are under `state/`; the latest
+release is also recorded in `deployment.json`. Protected local pre-deploy dumps
+are under `backups/`, retaining the latest 14 independently of weekly NAS policy.
+The encrypted NAS archive includes private config, state, deploy tooling and the
+project database. End-to-end evidence and screenshots are in
+`/Users/kyle/platform/verification/suggestions-cicd.json`.
+
+Changes to host deploy tooling or Compose need an explicit checkout update on
+Herman; routine image releases do not run `git pull` or change the host tools.
+
+## First deployment or manual local build
 
 Use `/Users/kyle/platform/apps/suggestions` on `herman.local`.
 Provision the isolated database with:
@@ -112,9 +148,16 @@ before declaring that flow accepted. Check an existing Herman site as well.
 
 ## Updates and rollback
 
-Check out a reviewed commit, then run `python3 deploy/release.py` again.
-Failed container health checks restore the previous image automatically.
-If a public acceptance check fails after a healthy rollout, restore it with:
+Normally, merge a reviewed change to `main` and let the release workflow deploy
+it. To redeploy or roll back to a previously attested main image on Herman:
+
+```sh
+./deploy/herman-deploy.sh sha256:<verified-manifest-digest>
+```
+
+The manual local-build fallback is `python3 deploy/release.py`. Both release
+paths share `state/deploy.lock`. Failed checks restore the previous image.
+For the local release record's previous image, use:
 
 ```sh
 python3 deploy/release.py --rollback
@@ -129,7 +172,6 @@ restore is needed. Preserve current submissions and reconcile any writes before
 restoring older data. Keep Clerk's dedicated DNS records intact.
 The public Clerk key is baked into the frontend, so a key change needs a rebuild;
 rolling back across Clerk-instance changes needs matching configuration too.
-There is no automatic GitHub deployment configured.
 
 Routine commands are `docker compose ps`, `docker compose config --quiet` and
 `docker compose logs --tail 50`. Never print resolved Compose output, `.env` or

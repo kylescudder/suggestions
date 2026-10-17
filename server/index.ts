@@ -39,6 +39,15 @@ type Env = { Variables: { userId: string | null } };
 
 const app = new Hono<Env>();
 
+app.use("*", async (c, next) => {
+  c.header(
+    "X-Suggestions-Revision",
+    process.env.SUGGESTIONS_REVISION ?? "unknown",
+  );
+  if (c.req.path.startsWith("/api/")) c.header("Cache-Control", "no-store");
+  await next();
+});
+
 app.use("/api/*", async (c, next) => {
   const state = await clerk.authenticateRequest(c.req.raw, {
     authorizedParties: process.env.CLERK_AUTHORIZED_PARTIES?.split(","),

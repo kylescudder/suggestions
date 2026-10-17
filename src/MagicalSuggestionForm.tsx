@@ -59,7 +59,7 @@ export function MagicalSuggestionForm() {
             Share Your Spark of Magic!
           </h1>
           <p className="text-xl text-purple-200 mb-8">
-            Your ideas can make this place shine brighter. ✨
+            Your ideas help make our workplace better. ✨
           </p>
         </div>
 

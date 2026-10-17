@@ -18,7 +18,7 @@ WORKDIR /app
 ARG SUGGESTIONS_REVISION=unknown
 LABEL org.opencontainers.image.source="https://github.com/kylescudder/suggestions" \
       org.opencontainers.image.revision=$SUGGESTIONS_REVISION
-ENV NODE_ENV=production PORT=3001
+ENV NODE_ENV=production PORT=3001 SUGGESTIONS_REVISION=$SUGGESTIONS_REVISION
 COPY --from=production-dependencies --chown=bun:bun /app/node_modules ./node_modules
 COPY --from=build --chown=bun:bun /app/dist ./dist
 COPY --chown=bun:bun server ./server

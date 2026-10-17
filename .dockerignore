@@ -6,3 +6,6 @@ dist
 deployment.json
 secrets
 **/__pycache__
+state
+backups
+deploy-spool
