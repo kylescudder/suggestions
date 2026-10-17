@@ -21,7 +21,7 @@ if (secret.length < 32)
   throw new Error("Webhook secret must be at least 32 characters.");
 const spool = process.env.SPOOL_DIR || "/spool";
 const port = Number(process.env.PORT || 9000);
-const maxBody = 1024;
+const maxBody = 8192;
 const maxSkewSeconds = 300;
 
 const log = (message) =>
@@ -58,7 +58,7 @@ function parseRequest(body) {
   if (
     registryToken !== undefined &&
     (typeof registryToken !== "string" ||
-      !/^[A-Za-z0-9_]{20,512}$/.test(registryToken))
+      !/^[-A-Za-z0-9._~+\/]{20,4096}={0,2}$/.test(registryToken))
   )
     throw new Error("invalid registry token");
   return {

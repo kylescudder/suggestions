@@ -19,6 +19,7 @@ IMAGE = 'ghcr.io/kylescudder/suggestions'
 REPO = 'kylescudder/suggestions'
 DIGEST = re.compile(r'sha256:[0-9a-f]{64}\Z')
 REVISION = re.compile(r'[0-9a-f]{40}\Z')
+REGISTRY_TOKEN = re.compile(r'[-A-Za-z0-9._~+/]{20,4096}={0,2}\Z')
 APP = Path(os.environ.get('APP_DIR', Path(__file__).resolve().parents[1]))
 STATE = APP / 'state'
 BACKUPS = APP / 'backups'
@@ -94,14 +95,14 @@ def take_request():
     valid = []
     for path in paths:
         try:
-            if path.is_symlink() or path.stat().st_size > 1024:
+            if path.is_symlink() or path.stat().st_size > 8192:
                 raise ValueError()
             value = json.loads(path.read_text())
             if not DIGEST.fullmatch(value.get('digest', '')) or not REVISION.fullmatch(value.get('revision', '')):
                 raise ValueError()
             if type(value.get('timestamp')) is not int:
                 raise ValueError()
-            if value.get('registryToken') is not None and not re.fullmatch(r'[A-Za-z0-9_]{20,512}', value['registryToken']):
+            if value.get('registryToken') is not None and not REGISTRY_TOKEN.fullmatch(value['registryToken']):
                 raise ValueError()
             valid.append((value['timestamp'], path.name, value))
         except (ValueError, TypeError, OSError, AttributeError):
@@ -175,7 +176,7 @@ def registry_credentials(token):
     if token is None:
         yield None
         return
-    if not isinstance(token, str) or not re.fullmatch(r'[A-Za-z0-9_]{20,512}', token):
+    if not isinstance(token, str) or not REGISTRY_TOKEN.fullmatch(token):
         raise Error('Invalid temporary registry credential.')
     # The release job supplies a read-only, job-lifetime token. Its protected
     # queue file is consumed immediately; registry config is removed even on error.

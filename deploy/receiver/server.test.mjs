@@ -54,7 +54,7 @@ test("receiver enforces signature, timestamp, size, exact path and queue limit",
       digest: "sha256:" + "a".repeat(64),
       revision: "b".repeat(40),
       timestamp: Math.floor(Date.now() / 1000),
-      registryToken: "temporary_registry_fixture_value_only",
+      registryToken: "opaque.fixture." + "x".repeat(600) + "-suffix+/==",
     };
     const send = async (body, signature, path = "/hooks/suggestions") =>
       fetch("http://127.0.0.1:19000" + path, {
@@ -75,13 +75,13 @@ test("receiver enforces signature, timestamp, size, exact path and queue limit",
       { ...value, revision: "invalid" },
       { ...value, registryToken: "invalid\ncredential" },
       { ...value, registryToken: null },
-      { ...value, registryToken: "x".repeat(513) },
+      { ...value, registryToken: "x".repeat(4097) },
     ]) {
       const data = JSON.stringify(invalid);
       assert.equal((await send(data, signed(data))).status, 400);
     }
     assert.equal((await send("broken", signed("broken"))).status, 400);
-    assert.equal((await send("x".repeat(1025), "invalid")).status, 413);
+    assert.equal((await send("x".repeat(8193), "invalid")).status, 413);
     for (const path of ["/", "/other", "/hooks/suggestions?x=1"])
       assert.equal((await send(body, signed(body), path)).status, 404);
     assert.equal((await fetch("http://127.0.0.1:19000/healthz")).status, 200);

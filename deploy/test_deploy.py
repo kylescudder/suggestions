@@ -178,5 +178,16 @@ class Deploy(unittest.TestCase):
             with module.registry_credentials('temporary_registry_fixture_value_only') as env:
                 self.assertEqual(env['DOCKER_HOST'],'unix:///existing-endpoint.sock')
 
+    def test_queue_accepts_opaque_job_tokens_without_recording_them(self):
+        self.queue('request.json',10)
+        path=module.REQUESTS/'request.json'
+        token='opaque.fixture.'+'x'*600+'-suffix+/=='
+        data=json.loads(path.read_text());data['registryToken']=token
+        path.write_text(json.dumps(data))
+        self.assertEqual(module.take_request()['registryToken'],token)
+        self.assertNotIn(token,(module.STATE/'last-request.json').read_text())
+        with patch.object(module,'run',return_value=b'unix:///test-colima.sock'), module.registry_credentials(token) as env:
+            self.assertEqual(env['GH_TOKEN'],token)
+
 
 if __name__=='__main__':unittest.main()
