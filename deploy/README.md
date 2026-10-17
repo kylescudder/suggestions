@@ -5,6 +5,28 @@ the API and the frontend on `suggestions:3001`, joining `platform-web` and the
 private `platform-db` network. It publishes no host ports. Memory is limited to
 256 MiB, with a non-root user, read-only root filesystem and bounded logs.
 
+## Current deployment
+
+Since 17 October 2026, `https://suggestions.kylescudder.co.uk` serves Herman.
+`deployment.json` records the running image and application revision; the first
+release is based on `bb9edac`. The old Netlify site and Convex database remain
+available for rollback, and the one legacy suggestion was imported and verified.
+
+Clerk's `Suggestions` production instance uses
+`clerk.suggestions.kylescudder.co.uk` and
+`accounts.suggestions.kylescudder.co.uk`. Its five CNAME records are DNS-only,
+with dedicated email/DKIM records under `suggestions.kylescudder.co.uk`.
+Production keys are in the protected `.env` and encrypted NAS backup. The
+Herman 1Password service account can read the Clerk dashboard login but cannot
+create vault items, so no separate API-key item was saved there.
+
+The initial admin is `kyle@kylescudder.co.uk`, using Clerk email-code sign-in.
+The app also checks the verified email against `ADMIN_EMAILS` on the server.
+Public browser submission, asset delivery, signed-out/invalid-token rejection
+and the runtime Clerk admin lookup passed. Completing the first browser admin
+sign-in still requires the emailed code; do not treat that acceptance as passed
+until the dashboard loads with the authenticated session.
+
 ## First deployment
 
 Use `/Users/kyle/platform/apps/suggestions` on `herman.local`.
@@ -49,9 +71,10 @@ the previous image.
 Schema changes must remain compatible with the previous release for image
 rollback to be safe.
 
-The existing public hostname points to `snazzy-suggestion-box.netlify.app`.
-Its Convex deployment is `https://third-stork-431.convex.cloud`; one rejected
-suggestion was present on 16 October 2026. Preserve it before cutover using
+The previous public hostname pointed to `snazzy-suggestion-box.netlify.app`.
+Its retained Convex deployment is `https://third-stork-431.convex.cloud`; one
+rejected suggestion was copied and verified during the initial deployment. On
+a fresh restore or before repeating that cutover, preserve the source using
 the image's `deploy/import-convex.ts` command with that URL as its argument
 and the runtime `.env`, on both `platform-web` and `platform-db` (for example,
 `docker compose run --rm --no-deps suggestions bun deploy/import-convex.ts https://third-stork-431.convex.cloud`).
@@ -67,11 +90,14 @@ python3 scripts/hostname.py add suggestions suggestions.kylescudder.co.uk --upst
 python3 scripts/hostname.py add suggestions suggestions.kylescudder.co.uk --upstream suggestions:3001
 ```
 
-The existing Netlify DNS record is a conflict, so these commands deliberately
-stop until that record is migrated. Save its exact record privately, replace
-it only as part of the verified cutover, and restore it if onboarding fails.
-Keep the Netlify site and Convex database for rollback. Never force the
-hostname tool past a conflict or edit its managed registry manually.
+The original Netlify DNS record is retained privately at
+`/Users/kyle/platform/verification/suggestions-netlify-dns-before.json`.
+The initial cutover removed that exact conflicting record only after private
+health and Clerk TLS checks passed, then registered the route using the
+hostname tool. The public release and Spooktober were checked afterwards.
+Evidence is `verification/suggestions-cutover.json` in the platform root.
+Future registrations use the managed record normally. Keep Netlify and Convex
+for rollback; never force the tool past a new conflict or edit its registry.
 
 Verify public HTTPS, assets, suggestion submission and signed-out rejection
 of listing/statistics/status updates. Verify an actual Clerk admin sign-in
@@ -89,6 +115,11 @@ python3 deploy/release.py --rollback
 
 The command keeps the previous image reference in protected `deployment.json`.
 Rollback restores the image only; it never erases submissions or reverses SQL.
+To return traffic to Netlify, first use the hostname tool to remove only
+`suggestions.kylescudder.co.uk`, then restore the saved CNAME through the
+Cloudflare API. Leave Clerk's separate DNS records intact. Verify HTTPS after
+restoration, and retain Postgres submissions: any writes accepted since cutover
+must be reconciled before returning to the old backend.
 The public Clerk key is baked into the frontend, so a key change needs a rebuild;
 rolling back across Clerk-instance changes needs matching configuration too.
 There is no automatic GitHub deployment configured.
