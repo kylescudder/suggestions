@@ -9,8 +9,12 @@ private `platform-db` network. It publishes no host ports. Memory is limited to
 
 Since 17 October 2026, `https://suggestions.kylescudder.co.uk` serves Herman.
 `deployment.json` records the running image and application revision; the first
-release is based on `bb9edac`. The old Netlify site and Convex database remain
-available for rollback, and the one legacy suggestion was imported and verified.
+release is based on `bb9edac`. The one legacy suggestion was imported and verified.
+Kyle requested removal of Netlify on 17 October 2026. The former project
+`amazing-seahorse-f7629b` (site ID `be720617-5e17-4067-b701-cd0b6e0e23b5`)
+was deleted; its Netlify hostname and preview return 404. The Convex source is
+retained, but Netlify is no longer a rollback target. Evidence is
+`/Users/kyle/platform/verification/suggestions-netlify-removal.json`.
 
 Clerk's `Suggestions` production instance uses
 `clerk.suggestions.kylescudder.co.uk` and
@@ -98,8 +102,9 @@ The initial cutover removed that exact conflicting record only after private
 health and Clerk TLS checks passed, then registered the route using the
 hostname tool. The public release and Spooktober were checked afterwards.
 Evidence is `verification/suggestions-cutover.json` in the platform root.
-Future registrations use the managed record normally. Keep Netlify and Convex
-for rollback; never force the tool past a new conflict or edit its registry.
+Future registrations use the managed record normally. The old DNS record is
+historical only: Netlify has been deleted. Never restore that CNAME, force the
+tool past a new conflict or edit its registry. The Convex source remains retained.
 
 Verify public HTTPS, assets, suggestion submission and signed-out rejection
 of listing/statistics/status updates. Verify an actual Clerk admin sign-in
@@ -117,11 +122,11 @@ python3 deploy/release.py --rollback
 
 The command keeps the previous image reference in protected `deployment.json`.
 Rollback restores the image only; it never erases submissions or reverses SQL.
-To return traffic to Netlify, first use the hostname tool to remove only
-`suggestions.kylescudder.co.uk`, then restore the saved CNAME through the
-Cloudflare API. Leave Clerk's separate DNS records intact. Verify HTTPS after
-restoration, and retain Postgres submissions: any writes accepted since cutover
-must be reconciled before returning to the old backend.
+Netlify is no longer available for traffic rollback; do not restore its saved
+CNAME. Recover the application on Herman using a retained image or rebuild the
+recorded repository revision, and use the encrypted database backup when a data
+restore is needed. Preserve current submissions and reconcile any writes before
+restoring older data. Keep Clerk's dedicated DNS records intact.
 The public Clerk key is baked into the frontend, so a key change needs a rebuild;
 rolling back across Clerk-instance changes needs matching configuration too.
 There is no automatic GitHub deployment configured.
