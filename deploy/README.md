@@ -23,9 +23,11 @@ create vault items, so no separate API-key item was saved there.
 The initial admin is `kyle@kylescudder.co.uk`, using Clerk email-code sign-in.
 The app also checks the verified email against `ADMIN_EMAILS` on the server.
 Public browser submission, asset delivery, signed-out/invalid-token rejection
-and the runtime Clerk admin lookup passed. Completing the first browser admin
-sign-in still requires the emailed code; do not treat that acceptance as passed
-until the dashboard loads with the authenticated session.
+and the runtime Clerk admin lookup passed. Kyle completed email-code sign-in
+in the collaborative browser on 17 October 2026. The authenticated dashboard,
+admin identity check, suggestion list and statistics all passed, showing the
+one imported rejected suggestion. Evidence is recorded in
+`/Users/kyle/platform/verification/suggestions-admin-acceptance.json`.
 
 ## First deployment
 
