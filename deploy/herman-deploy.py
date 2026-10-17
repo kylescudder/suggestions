@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """Deploy independently verified main images, consuming the newest queued request."""
 from datetime import datetime, timezone
+from contextlib import contextmanager
+import base64
 import fcntl
 import json
 import os
@@ -99,12 +101,14 @@ def take_request():
                 raise ValueError()
             if type(value.get('timestamp')) is not int:
                 raise ValueError()
+            if value.get('registryToken') is not None and not re.fullmatch(r'[A-Za-z0-9_]{20,512}', value['registryToken']):
+                raise ValueError()
             valid.append((value['timestamp'], path.name, value))
         except (ValueError, TypeError, OSError, AttributeError):
             log('discarded malformed queue entry')
     selected = max(valid, key=lambda entry:entry[:2])[2] if valid else None
     if selected:
-        save_json(STATE / 'last-request.json', selected)
+        save_json(STATE / 'last-request.json', {k:v for k,v in selected.items() if k != 'registryToken'})
     for path in paths:
         if path.is_dir() and not path.is_symlink():
             path.rename(STATE / ('rejected-directory-' + uuid.uuid4().hex))
@@ -166,7 +170,33 @@ def migrate(candidate):
              '--env-file', str(config), candidate, 'bun', 'server/migrate.ts'])
 
 
-def deploy(digest, requested_revision=None):
+@contextmanager
+def registry_credentials(token):
+    if token is None:
+        yield None
+        return
+    if not isinstance(token, str) or not re.fullmatch(r'[A-Za-z0-9_]{20,512}', token):
+        raise Error('Invalid temporary registry credential.')
+    # The release job supplies a read-only, job-lifetime token. Its protected
+    # queue file is consumed immediately; registry config is removed even on error.
+    with tempfile.TemporaryDirectory(prefix='suggestions-registry-') as folder:
+        config = Path(folder) / 'config.json'
+        credential = base64.b64encode((REPO.split('/')[0] + ':' + token).encode()).decode()
+        config.write_text(json.dumps({'auths':{'ghcr.io':{'auth':credential}}}))
+        config.chmod(0o600)
+        env = os.environ.copy()
+        # A temporary DOCKER_CONFIG must retain Colima's active daemon endpoint.
+        if not env.get('DOCKER_HOST'):
+            endpoint = run(['docker', 'context', 'inspect', '--format', '{{.Endpoints.docker.Host}}']).decode().strip()
+            if not endpoint.startswith('unix://'):
+                raise Error('Expected Herman\'s local Docker socket.')
+            env['DOCKER_HOST'] = endpoint
+        env.pop('DOCKER_CONTEXT', None)
+        env.update({'DOCKER_CONFIG':folder, 'GH_TOKEN':token})
+        yield env
+
+
+def deploy(digest, requested_revision=None, registry_token=None):
     if not DIGEST.fullmatch(digest):
         raise Error('Use an exact sha256 digest.')
     runtime = private_env(APP / '.env')
@@ -184,10 +214,11 @@ def deploy(digest, requested_revision=None):
         pin(candidate)
         return
     log(f'verifying {candidate}')
-    run(['gh', 'attestation', 'verify', f'oci://{candidate}', '--bundle-from-oci', '--repo', REPO,
-         '--signer-workflow', REPO + '/.github/workflows/release.yml', '--source-ref', 'refs/heads/main',
-         '--deny-self-hosted-runners'], timeout=180)
-    run(['docker', 'pull', '--quiet', candidate], timeout=300)
+    with registry_credentials(registry_token) as registry_env:
+        run(['gh', 'attestation', 'verify', f'oci://{candidate}', '--bundle-from-oci', '--repo', REPO,
+             '--signer-workflow', REPO + '/.github/workflows/release.yml', '--source-ref', 'refs/heads/main',
+             '--deny-self-hosted-runners'], timeout=180, env=registry_env)
+        run(['docker', 'pull', '--quiet', candidate], timeout=300, env=registry_env)
     labels = json.loads(run(['docker', 'image', 'inspect', '--format', '{{json .Config.Labels}}', candidate])) or {}
     revision = labels.get('org.opencontainers.image.revision', '')
     if not REVISION.fullmatch(revision) or requested_revision and requested_revision != revision:
@@ -236,7 +267,7 @@ def main():
             log('no queued requests')
             return
         try:
-            deploy(request['digest'], request.get('revision'))
+            deploy(request['digest'], request.get('revision'), request.get('registryToken'))
         except Error as error:
             save_json(STATE / 'last-failure.json', {'failed_at':datetime.now(timezone.utc).isoformat(),
                       'digest':request['digest'], 'error':str(error)})

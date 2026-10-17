@@ -42,6 +42,10 @@ and receiver signature/path/queue behavior. Native AMD64 and ARM64 builders
 publish `ghcr.io/kylescudder/suggestions` with GitHub provenance. GitHub holds
 only deployment credentials and the public Clerk publishable-key variable;
 Clerk secrets and production database credentials remain on Herman.
+The release job includes a read-only, job-lifetime registry token in its signed
+request so Herman can verify and pull private GHCR images. The host removes its
+temporary registry configuration after the pull and omits this token from state
+and logs. No persistent GitHub registry password is installed on Herman.
 
 The main-only `production` environment sends a signed request through Cloudflare
 Access to `https://deploy-suggestions.kylescudder.co.uk/hooks/suggestions`.
@@ -155,6 +159,8 @@ it. To redeploy or roll back to a previously attested main image on Herman:
 ./deploy/herman-deploy.sh sha256:<verified-manifest-digest>
 ```
 
+Manual private-registry digest deployment requires package-read access. The
+cached previous image can instead be restored with `python3 deploy/release.py --rollback`.
 The manual local-build fallback is `python3 deploy/release.py`. Both release
 paths share `state/deploy.lock`. Failed checks restore the previous image.
 For the local release record's previous image, use:

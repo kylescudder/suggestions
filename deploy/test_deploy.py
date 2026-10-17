@@ -132,5 +132,51 @@ class Deploy(unittest.TestCase):
         self.assertTrue((module.STATE/'history.log').exists())
         self.assertTrue((module.REQUESTS/'arriving.json').exists())
 
+    def test_registry_token_is_consumed_but_not_persisted_in_state(self):
+        self.queue('request.json',10)
+        path=module.REQUESTS/'request.json'
+        data=json.loads(path.read_text())
+        token='temporary_registry_fixture_value_only'
+        data['registryToken']=token
+        path.write_text(json.dumps(data))
+        self.assertEqual(module.take_request()['registryToken'],token)
+        self.assertNotIn(token,(module.STATE/'last-request.json').read_text())
+        self.assertNotIn('registryToken',json.loads((module.STATE/'last-request.json').read_text()))
+        self.assertEqual(list(module.REQUESTS.iterdir()),[])
+
+    def test_invalid_registry_token_is_rejected_without_state(self):
+        self.queue('request.json',10)
+        path=module.REQUESTS/'request.json'
+        data=json.loads(path.read_text());data['registryToken']='invalid\ncredential'
+        path.write_text(json.dumps(data))
+        self.assertIsNone(module.take_request())
+        self.assertFalse((module.STATE/'last-request.json').exists())
+
+    def test_registry_credentials_are_private_temporary_and_do_not_change_global_environment(self):
+        import base64
+        before=os.environ.get('GH_TOKEN')
+        token='temporary_registry_fixture_value_only'
+        with patch.object(module,'run',return_value=b'unix:///test-colima.sock'), module.registry_credentials(token) as env:
+            config=Path(env['DOCKER_CONFIG'])/'config.json'
+            self.assertEqual(config.stat().st_mode & 0o777,0o600)
+            stored=json.loads(config.read_text())['auths']['ghcr.io']['auth']
+            self.assertEqual(base64.b64decode(stored).decode(),'kylescudder:'+token)
+            self.assertEqual(env['GH_TOKEN'],token)
+            self.assertEqual(env['DOCKER_HOST'],os.environ.get('DOCKER_HOST') or 'unix:///test-colima.sock')
+        self.assertFalse(config.exists())
+        self.assertEqual(os.environ.get('GH_TOKEN'),before)
+
+    def test_registry_credentials_are_removed_when_pull_fails(self):
+        with self.assertRaises(module.Error):
+            with patch.object(module,'run',return_value=b'unix:///test-colima.sock'), module.registry_credentials('temporary_registry_fixture_value_only') as env:
+                config=Path(env['DOCKER_CONFIG'])/'config.json'
+                raise module.Error('registry unavailable')
+        self.assertFalse(config.exists())
+
+    def test_registry_credentials_preserve_an_explicit_docker_endpoint(self):
+        with patch.dict(os.environ,{'DOCKER_HOST':'unix:///existing-endpoint.sock'}):
+            with module.registry_credentials('temporary_registry_fixture_value_only') as env:
+                self.assertEqual(env['DOCKER_HOST'],'unix:///existing-endpoint.sock')
+
 
 if __name__=='__main__':unittest.main()

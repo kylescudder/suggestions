@@ -6,7 +6,9 @@ import {
   mkdtempSync,
   mkdirSync,
   writeFileSync,
+  readFileSync,
   readdirSync,
+  statSync,
   rmSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -52,6 +54,7 @@ test("receiver enforces signature, timestamp, size, exact path and queue limit",
       digest: "sha256:" + "a".repeat(64),
       revision: "b".repeat(40),
       timestamp: Math.floor(Date.now() / 1000),
+      registryToken: "temporary_registry_fixture_value_only",
     };
     const send = async (body, signature, path = "/hooks/suggestions") =>
       fetch("http://127.0.0.1:19000" + path, {
@@ -70,6 +73,9 @@ test("receiver enforces signature, timestamp, size, exact path and queue limit",
       { ...value, timestamp: value.timestamp - 600 },
       { ...value, digest: "invalid" },
       { ...value, revision: "invalid" },
+      { ...value, registryToken: "invalid\ncredential" },
+      { ...value, registryToken: null },
+      { ...value, registryToken: "x".repeat(513) },
     ]) {
       const data = JSON.stringify(invalid);
       assert.equal((await send(data, signed(data))).status, 400);
@@ -81,6 +87,16 @@ test("receiver enforces signature, timestamp, size, exact path and queue limit",
     assert.equal((await fetch("http://127.0.0.1:19000/healthz")).status, 200);
     assert.equal((await send(body, signed(body))).status, 202);
     assert.equal(readdirSync(join(directory, "requests")).length, 1);
+    const queued = join(
+      directory,
+      "requests",
+      readdirSync(join(directory, "requests"))[0],
+    );
+    assert.equal(
+      JSON.parse(readFileSync(queued, "utf8")).registryToken,
+      value.registryToken,
+    );
+    assert.equal(statSync(queued).mode & 0o777, 0o600);
     assert.equal(readdirSync(join(directory, "tmp")).length, 0);
     for (let i = 0; i < 63; i++)
       writeFileSync(join(directory, "requests", `fixture-${i}.json`), "{}");

@@ -124,7 +124,10 @@ jobs:
     if: vars.DEPLOY_ENABLED == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 15
-    permissions: {}
+    permissions:
+      contents: read
+      packages: read
+      attestations: read
     environment:
       name: production
       url: ${{ vars.SUGGESTIONS_BASE_URL }}
@@ -165,9 +168,10 @@ jobs:
           WEBHOOK_SECRET: ${{ secrets.DEPLOY_WEBHOOK_SECRET }}
           CF_ACCESS_CLIENT_ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
           CF_ACCESS_CLIENT_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
+          REGISTRY_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          body=$(jq -cn --arg digest "$DIGEST" --arg revision "$GITHUB_SHA" --argjson timestamp "$(date +%s)" \
-            '{digest: $digest, revision: $revision, timestamp: $timestamp}')
+          body=$(jq -cn --arg digest "$DIGEST" --arg revision "$GITHUB_SHA" --arg registryToken "$REGISTRY_TOKEN" --argjson timestamp "$(date +%s)" \
+            '{digest: $digest, revision: $revision, timestamp: $timestamp, registryToken: $registryToken}')
           signature=$(printf '%s' "$body" | openssl dgst -sha256 -hmac "$WEBHOOK_SECRET" -hex | awk '{print $NF}')
           curl --fail-with-body --silent --show-error --max-time 30 "$DEPLOY_URL" \
             -H "Content-Type: application/json" \

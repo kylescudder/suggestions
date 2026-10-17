@@ -47,7 +47,7 @@ function validSignature(body, header) {
 
 function parseRequest(body) {
   const request = JSON.parse(body.toString("utf8"));
-  const { digest, revision, timestamp } = request ?? {};
+  const { digest, revision, timestamp, registryToken } = request ?? {};
   if (!/^sha256:[0-9a-f]{64}$/.test(digest)) throw new Error("invalid digest");
   if (!/^[0-9a-f]{40}$/.test(revision)) throw new Error("invalid revision");
   if (
@@ -55,7 +55,18 @@ function parseRequest(body) {
     Math.abs(Date.now() / 1000 - timestamp) > maxSkewSeconds
   )
     throw new Error("stale or invalid timestamp");
-  return { digest, revision, timestamp };
+  if (
+    registryToken !== undefined &&
+    (typeof registryToken !== "string" ||
+      !/^[A-Za-z0-9_]{20,512}$/.test(registryToken))
+  )
+    throw new Error("invalid registry token");
+  return {
+    digest,
+    revision,
+    timestamp,
+    ...(registryToken ? { registryToken } : {}),
+  };
 }
 
 createServer((request, response) => {
