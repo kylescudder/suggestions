@@ -1,5 +1,20 @@
 # Suggestions on the host
 
+## Shared deployment service
+
+This app is registered as `suggestions` in the central deployment registry
+`/Users/kyle/platform/deploy-core/apps.json`. LaunchAgent
+`com.kylescudder.deploy-core` runs the single installed engine. Application hooks
+are `deploy/hooks.py`; the receiver, credentials, queues,
+state and database contracts below remain app-specific. Manual deployment uses
+`./deploy/host-deploy.sh sha256:<digest>`.
+
+Engine updates, application registration, failure inspection and service rollback
+are documented in [deploy-core](https://github.com/kylescudder/deploy-core).
+There are no vendored engine files, lock files or sync PRs. Do not install an
+app-specific LaunchAgent. Apply future engine changes once through the central service.
+
+
 The app is React/Vite with a Hono API on Bun. One ARM64 container serves both
 the API and the frontend on `suggestions:3001`, joining `platform-web` and the
 private `platform-db` network. It publishes no host ports. Memory is limited to
@@ -7,10 +22,7 @@ private `platform-db` network. It publishes no host ports. Memory is limited to
 
 ## Deployer
 
-`deploy/host-deploy.py` holds this app's settings and hooks; the
-shared flow is `deploy/deploy_core.py`, vendored unchanged from
-`kylescudder/deploy-core` (see `deploy/deploy_core.lock`). Change the core
-there and sync it; CI fails if the vendored copy is edited here.
+`application hooks` holds this app's settings and hooks; the
 
 ## Current deployment
 
@@ -63,7 +75,7 @@ The main-only `production` environment sends a signed request through Cloudflare
 Access to `https://deploy-suggestions.kylescudder.co.uk/hooks/suggestions`.
 Caddy exposes only that exact path to `suggestions-deploy-hook:9000`. The
 receiver has no Docker socket, database network or host port: it writes a queue
-consumed by `com.kylescudder.suggestions-deploy` on the host. The host independently
+consumed by `com.kylescudder.deploy-core` on the host. The host independently
 verifies repository, workflow and main-branch image provenance, saves a database
 dump, runs owner migrations, then starts the immutable image. Failed application
 checks restore the previous image. Runtime credentials remain restricted.

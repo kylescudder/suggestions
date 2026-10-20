@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Suggestions settings and hooks for the shared host deployer (deploy_core.py)."""
+"""Suggestions application-owned hooks for the installed deployment service."""
 from pathlib import Path
 import tempfile
 from urllib.parse import quote
@@ -36,17 +36,3 @@ def after_success(record):
     core.save_json(core.APP / 'deployment.json', {'released_at':record['deployed_at'], 'image':record['image'],
                    'revision':record['revision'], 'previous_image':record['previous_image'],
                    'previous_revision':record['previous_revision'], 'hostname':'suggestions.kylescudder.co.uk'})
-
-
-APP = core.App(
-    name='suggestions', title='Suggestions',
-    image='ghcr.io/kylescudder/suggestions', repo='kylescudder/suggestions',
-    image_var='SUGGESTIONS_IMAGE', service='suggestions', app_dir=Path(__file__).resolve().parents[1],
-    accept=accept,
-    prepare=prepare,
-    after_success=after_success,
-    public_status=True,
-    backups=True)
-
-if __name__ == '__main__':
-    core.cli(APP, __file__)
