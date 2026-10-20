@@ -1,13 +1,20 @@
-# Suggestions on Herman
+# Suggestions on the host
 
 The app is React/Vite with a Hono API on Bun. One ARM64 container serves both
 the API and the frontend on `suggestions:3001`, joining `platform-web` and the
 private `platform-db` network. It publishes no host ports. Memory is limited to
 256 MiB, with a non-root user, read-only root filesystem and bounded logs.
 
+## Deployer
+
+`deploy/host-deploy.py` holds this app's settings and hooks; the
+shared flow is `deploy/deploy_core.py`, vendored unchanged from
+`kylescudder/deploy-core` (see `deploy/deploy_core.lock`). Change the core
+there and sync it; CI fails if the vendored copy is edited here.
+
 ## Current deployment
 
-Since 17 October 2026, `https://suggestions.kylescudder.co.uk` serves Herman.
+Since 17 October 2026, `https://suggestions.kylescudder.co.uk` is served from the host.
 `deployment.json` records the running image and application revision; the first
 release is based on `bb9edac`. The one legacy suggestion was imported and verified.
 Kyle requested removal of Netlify on 17 October 2026. The former project
@@ -26,7 +33,7 @@ Clerk's `Suggestions` production instance uses
 `accounts.suggestions.kylescudder.co.uk`. Its five CNAME records are DNS-only,
 with dedicated email/DKIM records under `suggestions.kylescudder.co.uk`.
 Production keys are in the protected `.env` and encrypted NAS backup. The
-Herman 1Password service account can read the Clerk dashboard login but cannot
+The host 1Password service account can read the Clerk dashboard login but cannot
 create vault items, so no separate API-key item was saved there.
 
 The initial admin is `kyle@kylescudder.co.uk`, using Clerk email-code sign-in.
@@ -46,17 +53,17 @@ database access in disposable PostgreSQL, deployment rollback/provenance gates,
 and receiver signature/path/queue behavior. Native AMD64 and ARM64 builders
 publish `ghcr.io/kylescudder/suggestions` with GitHub provenance. GitHub holds
 only deployment credentials and the public Clerk publishable-key variable;
-Clerk secrets and production database credentials remain on Herman.
+Clerk secrets and production database credentials remain on the host.
 The release job includes a read-only, job-lifetime registry token in its signed
-request so Herman can verify and pull private GHCR images. The host removes its
+request so the host can verify and pull private GHCR images. The host removes its
 temporary registry configuration after the pull and omits this token from state
-and logs. No persistent GitHub registry password is installed on Herman.
+and logs. No persistent GitHub registry password is installed on the host.
 
 The main-only `production` environment sends a signed request through Cloudflare
 Access to `https://deploy-suggestions.kylescudder.co.uk/hooks/suggestions`.
 Caddy exposes only that exact path to `suggestions-deploy-hook:9000`. The
 receiver has no Docker socket, database network or host port: it writes a queue
-consumed by `com.herman.suggestions-deploy` on Herman. The host independently
+consumed by `com.kylescudder.suggestions-deploy` on the host. The host independently
 verifies repository, workflow and main-branch image provenance, saves a database
 dump, runs owner migrations, then starts the immutable image. Failed application
 checks restore the previous image. Runtime credentials remain restricted.
@@ -80,11 +87,11 @@ project database. End-to-end evidence and screenshots are in
 `/Users/kyle/platform/verification/suggestions-cicd.json`.
 
 Changes to host deploy tooling or Compose need an explicit checkout update on
-Herman; routine image releases do not run `git pull` or change the host tools.
+The host; routine image releases do not run `git pull` or change the host tools.
 
 ## First deployment or manual local build
 
-Use `/Users/kyle/platform/apps/suggestions` on `herman.local`.
+Use `/Users/kyle/platform/apps/suggestions` on the host.
 Provision the isolated database with:
 
 ```sh
@@ -112,7 +119,7 @@ verified admin email. Use production Clerk keys for production.
 Commit application and deployment changes, then run:
 
 ```sh
-python3 deploy/release.py
+DEPLOY_HOSTNAME=<host name> python3 deploy/release.py
 ```
 
 This builds a versioned image with the pinned Bun base and frozen lockfile,
@@ -156,19 +163,19 @@ Evidence is `verification/suggestions-cutover.json` in the platform root.
 Future registrations use the managed record normally. The old DNS record is
 historical only: Netlify has been deleted. Never restore that CNAME, force the
 tool past a new conflict or edit its registry. Convex is also deleted; recovery
-uses the retained Herman image or encrypted Postgres backup.
+uses the retained the host image or encrypted Postgres backup.
 
 Verify public HTTPS, assets, suggestion submission and signed-out rejection
 of listing/statistics/status updates. Verify an actual Clerk admin sign-in
-before declaring that flow accepted. Check an existing Herman site as well.
+before declaring that flow accepted. Check an existing the host site as well.
 
 ## Updates and rollback
 
 Normally, merge a reviewed change to `main` and let the release workflow deploy
-it. To redeploy or roll back to a previously attested main image on Herman:
+it. To redeploy or roll back to a previously attested main image on the host:
 
 ```sh
-./deploy/herman-deploy.sh sha256:<verified-manifest-digest>
+./deploy/host-deploy.sh sha256:<verified-manifest-digest>
 ```
 
 Manual private-registry digest deployment requires package-read access. The
@@ -178,13 +185,13 @@ paths share `state/deploy.lock`. Failed checks restore the previous image.
 For the local release record's previous image, use:
 
 ```sh
-python3 deploy/release.py --rollback
+DEPLOY_HOSTNAME=<host name> python3 deploy/release.py --rollback
 ```
 
 The command keeps the previous image reference in protected `deployment.json`.
 Rollback restores the image only; it never erases submissions or reverses SQL.
 Netlify is no longer available for traffic rollback; do not restore its saved
-CNAME. Recover the application on Herman using a retained image or rebuild the
+CNAME. Recover the application on the host using a retained image or rebuild the
 recorded repository revision, and use the encrypted database backup when a data
 restore is needed. Preserve current submissions and reconcile any writes before
 restoring older data. Keep Clerk's dedicated DNS records intact.

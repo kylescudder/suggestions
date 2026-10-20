@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build and release Suggestions on Herman, or restore its previous image."""
+"""Build and release Suggestions on the host, or restore its previous image."""
 import argparse
 import datetime
 import fcntl
@@ -41,8 +41,9 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--rollback", action="store_true")
     args = parser.parse_args()
-    if socket.gethostname().split(".")[0] != "herman" or PLATFORM != Path("/Users/kyle/platform"):
-        raise SystemExit("This release command must run in Herman's platform checkout")
+    expected = os.environ.get("DEPLOY_HOSTNAME")
+    if not expected or socket.gethostname().split(".")[0] != expected or PLATFORM != Path("/Users/kyle/platform"):
+        raise SystemExit("Set DEPLOY_HOSTNAME to this host's name and run in the host's platform checkout")
     if not CONFIG.is_file() or CONFIG.stat().st_mode & 0o077:
         raise SystemExit("Create .env with mode 0600; see deploy/README.md")
     original = CONFIG.read_text()
@@ -72,7 +73,7 @@ def main():
         if (database.hostname, database.username, database.path) != (
             "postgres", "suggestions_runtime", "/suggestions"
         ):
-            raise SystemExit("DATABASE_URL must use Suggestions' restricted Herman runtime role")
+            raise SystemExit("DATABASE_URL must use Suggestions' restricted runtime role on the host")
         stamp = datetime.datetime.now(datetime.timezone.utc).strftime("%Y%m%d%H%M%S")
         image = f"suggestions:{revision[:12]}-{stamp}"
         run("docker", "build", "--build-arg", "SUGGESTIONS_REVISION=" + revision,
