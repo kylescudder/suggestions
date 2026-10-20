@@ -24,5 +24,5 @@ Vite proxies `/api` to the server.
 the built frontend from `dist/`. Supply the owner credential only to the migration
 command when using separate database roles.
 
-For Herman's container deployment, database provisioning and rollback, see
+For the host's container deployment, database provisioning and rollback, see
 [deploy/README.md](deploy/README.md).

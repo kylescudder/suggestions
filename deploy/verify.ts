@@ -37,7 +37,7 @@ try {
       method: "POST",
       headers,
       body: JSON.stringify({
-        title: "Herman deployment verification",
+        title: "Host deployment verification",
         description: "Temporary submission removed by the deployment check.",
       }),
     })
