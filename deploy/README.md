@@ -22,7 +22,7 @@ private `platform-db` network. It publishes no host ports. Memory is limited to
 
 ## Deployer
 
-`application hooks` holds this app's settings and hooks; the
+Application-specific behavior is in `hooks.py`; deployment definitions are central.
 
 ## Current deployment
 
