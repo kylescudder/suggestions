@@ -25,7 +25,7 @@ try {
   )
     throw new Error('Health revision/cache headers are incorrect')
   const page = await (await expect('/', 200)).text()
-  const asset = page.match(/src="([^\"]+\.js)"/)?.[1]
+  const asset = page.match(/src="([^"]+\.js)"/)?.[1]
   if (!asset) throw new Error('Built frontend asset is missing')
   await expect(asset, 200)
   const me = (await (await expect('/api/me', 200)).json()) as {

@@ -8,7 +8,7 @@ FROM dependencies AS build
 COPY . .
 ARG VITE_CLERK_PUBLISHABLE_KEY
 ENV VITE_CLERK_PUBLISHABLE_KEY=$VITE_CLERK_PUBLISHABLE_KEY
-RUN bun run typecheck && bun run build
+RUN bun run typecheck && bun run lint && bun run build
 
 FROM dependencies AS production-dependencies
 RUN rm -rf node_modules && bun install --production --frozen-lockfile --ignore-scripts --network-concurrency 8
