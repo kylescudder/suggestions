@@ -48,6 +48,23 @@ app.use('*', async (c, next) => {
   await next()
 })
 
+app.get('/healthz', async (c) => {
+  c.header('Cache-Control', 'no-store')
+  try {
+    // Fail before the server's idle timeout drops the request.
+    await Promise.race([
+      sql`SELECT id FROM suggestions LIMIT 0`,
+      Bun.sleep(3000).then(() => Promise.reject(new Error('timeout')))
+    ])
+  } catch {
+    return c.json({ ok: false }, 503)
+  }
+  return c.json({
+    ok: true,
+    revision: process.env.SUGGESTIONS_REVISION ?? 'unknown'
+  })
+})
+
 app.use('/api/*', async (c, next) => {
   const state = await clerk.authenticateRequest(c.req.raw, {
     authorizedParties: process.env.CLERK_AUTHORIZED_PARTIES?.split(',')

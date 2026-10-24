@@ -16,6 +16,14 @@ async function expect(path: string, status: number, init?: RequestInit) {
 }
 
 try {
+  const health = await expect('/healthz', 200)
+  if (
+    health.headers.get('X-Suggestions-Revision') !==
+      process.env.SUGGESTIONS_REVISION ||
+    health.headers.get('Cache-Control') !== 'no-store' ||
+    ((await health.json()) as { ok?: unknown }).ok !== true
+  )
+    throw new Error('Health revision/cache headers are incorrect')
   const page = await (await expect('/', 200)).text()
   const asset = page.match(/src="([^\"]+\.js)"/)?.[1]
   if (!asset) throw new Error('Built frontend asset is missing')
