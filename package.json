@@ -6,11 +6,12 @@
   "scripts": {
     "dev": "npm-run-all --parallel dev:frontend dev:backend",
     "dev:frontend": "vite --open",
-    "dev:backend": "bun run migrate && bun --watch server/index.ts",
+    "dev:backend": "bun run db:migrate && bun --watch server/index.ts",
     "build": "vite build",
     "start": "NODE_ENV=production bun server/index.ts",
-    "migrate": "bun server/migrate.ts",
-    "lint": "tsc -p server --pretty false && tsc -p tsconfig.app.json --pretty false && tsc -p tsconfig.node.json --pretty false && vite build",
+    "typecheck": "tsc -p server --pretty false && tsc -p tsconfig.app.json --pretty false && tsc -p tsconfig.node.json --pretty false",
+    "test": "bun deploy/test-database.ts",
+    "db:migrate": "bun server/migrate.ts",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "prepare": "husky"
@@ -43,6 +44,7 @@
     "npm-run-all2": "8.0.4",
     "postcss": "~8",
     "prettier": "3.7.4",
+    "prettier-plugin-tailwindcss": "0.7.1",
     "tailwindcss": "^4.1.16",
     "typescript": "~5.9.0",
     "typescript-eslint": "8.49.0",
