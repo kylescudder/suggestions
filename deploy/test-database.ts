@@ -68,9 +68,25 @@ try {
     ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO "${runtimeName}";
     ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT USAGE, SELECT ON SEQUENCES TO "${runtimeName}";
   `)
-  const schema = new URL('../server/schema.sql', import.meta.url).pathname
-  await owner.file(schema)
-  await owner.file(schema)
+  const ownerUrl = new URL(process.env.TEST_DATABASE_URL!)
+  ownerUrl.username = ownerName
+  ownerUrl.password = ''
+  ownerUrl.pathname = '/' + name
+  // Run the real migration entrypoint twice; the second run must be a no-op.
+  for (let run = 0; run < 2; run++) {
+    const migration = Bun.spawn(
+      ['bun', new URL('../server/migrate.ts', import.meta.url).pathname],
+      {
+        env: { ...process.env, DATABASE_URL: ownerUrl.toString() },
+        stdout: 'ignore',
+        stderr: 'inherit'
+      }
+    )
+    assert.equal(await migration.exited, 0, 'Migration failed')
+  }
+  const [journal] =
+    await owner`SELECT count(*)::int AS applied FROM drizzle.__drizzle_migrations`
+  assert.equal(journal.applied, 1)
   const runtime = client(runtimeName)
   const [row] = await runtime`
     INSERT INTO suggestions(title, description) VALUES ('CI check', 'Disposable test')
@@ -86,6 +102,7 @@ try {
   await denied(runtime.unsafe('CREATE TABLE public.forbidden(id int)'))
   await denied(runtime.unsafe('CREATE SCHEMA forbidden'))
   await denied(runtime.unsafe('CREATE ROLE forbidden'))
+  await denied(runtime`SELECT hash FROM drizzle.__drizzle_migrations`)
   const foreign = client(runtimeName, otherName)
   await denied(foreign`SELECT 1`)
 
@@ -173,7 +190,7 @@ try {
     'Health recovered without releasing the permanently stalled socket'
   )
   console.log(
-    'Owner migrations/repeat, runtime CRUD/sequences, denied DDL, cross-database isolation and health probe cancellation/recovery passed'
+    'Owner migrations/repeat, runtime CRUD/sequences, denied DDL and migration journal, cross-database isolation and health probe cancellation/recovery passed'
   )
 } finally {
   await proxy?.close()
