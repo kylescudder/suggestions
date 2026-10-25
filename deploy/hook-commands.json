@@ -1,19 +1,10 @@
 [
   [
     "compose",
-    [
-      "exec",
-      "-T",
-      "suggestions",
-      "bun",
-      "deploy/verify.ts"
-    ],
+    ["exec", "-T", "suggestions", "bun", "deploy/verify.ts"],
     "ghcr.io/kylescudder/suggestions@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
   ],
-  [
-    "backup_database",
-    "suggestions"
-  ],
+  ["backup_database", "suggestions"],
   [
     "run",
     [

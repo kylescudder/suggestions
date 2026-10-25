@@ -10,7 +10,7 @@ A React + Vite frontend with a small [Hono](https://hono.dev) API server running
    - `ADMIN_EMAILS`: verified email addresses allowed into the admin dashboard
 2. `bun install`
 
-Apply `server/schema.sql` with `bun run migrate`. Run migrations with a schema
+Apply `server/schema.sql` with `bun run db:migrate`. Run migrations with a schema
 owner credential; the production server can use a restricted data-only role.
 
 ## Development
@@ -20,7 +20,7 @@ Vite proxies `/api` to the server.
 
 ## Production
 
-`bun run migrate && bun run build && bun run start` — the API server also serves
+`bun run db:migrate && bun run build && bun run start` — the API server also serves
 the built frontend from `dist/`. Supply the owner credential only to the migration
 command when using separate database roles.
 

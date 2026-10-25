@@ -1,12 +1,12 @@
-import { createRoot } from "react-dom/client";
-import { ClerkProvider } from "@clerk/react";
-import "./index.css";
-import App from "./App";
+import { createRoot } from 'react-dom/client'
+import { ClerkProvider } from '@clerk/react'
+import './index.css'
+import App from './App'
 
-createRoot(document.getElementById("root")!).render(
+createRoot(document.getElementById('root')!).render(
   <ClerkProvider
     publishableKey={import.meta.env.VITE_CLERK_PUBLISHABLE_KEY as string}
   >
     <App />
-  </ClerkProvider>,
-);
+  </ClerkProvider>
+)

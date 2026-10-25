@@ -14,7 +14,6 @@ are documented in [deploy-core](https://github.com/kylescudder/deploy-core).
 There are no vendored engine files, lock files or sync PRs. Do not install an
 app-specific LaunchAgent. Apply future engine changes once through the central service.
 
-
 The app is React/Vite with a Hono API on Bun. One ARM64 container serves both
 the API and the frontend on `suggestions:3001`, joining `platform-web` and the
 private `platform-db` network. It publishes no host ports. Memory is limited to

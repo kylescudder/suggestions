@@ -35,11 +35,13 @@ jobs:
         env:
           VITE_CLERK_PUBLISHABLE_KEY: ${{ vars.VITE_CLERK_PUBLISHABLE_KEY }}
         run: docker build --target build --build-arg VITE_CLERK_PUBLISHABLE_KEY -t suggestions:checks .
+      - name: Verify formatting
+        run: docker run --rm suggestions:checks bun run format:check
       - name: Verify owner migrations and restricted runtime data access
         run: |
           docker run --rm --network host \
             -e TEST_DATABASE_URL=postgres://postgres@127.0.0.1:5432/postgres \
-            suggestions:checks bun deploy/test-database.ts
+            suggestions:checks bun run test
       - name: Verify application deployment hooks (engine gates run in deploy-core)
         run: python3 -B -m unittest discover -s deploy -p 'test_*.py' -v
       - name: Verify webhook authentication and queue limits
