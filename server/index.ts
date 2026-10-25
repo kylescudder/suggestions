@@ -2,6 +2,7 @@ import { Hono, type Context, type Next } from 'hono'
 import { serveStatic } from 'hono/bun'
 import { createClerkClient } from '@clerk/backend'
 import { sql } from './db'
+import { createHealthCheck } from './health'
 
 const STATUSES = ['pending', 'reviewed', 'implemented', 'rejected']
 
@@ -48,35 +49,14 @@ app.use('*', async (c, next) => {
   await next()
 })
 
-let healthProbe: Promise<unknown> | undefined
+const checkHealth = createHealthCheck(process.env.DATABASE_URL!)
 
 app.get('/healthz', async (c) => {
   c.header('Cache-Control', 'no-store')
-  // Share one probe so stalled connections cannot fill the application pool.
-  healthProbe ??= sql
-    .begin(async (probe) => {
-      // Scope the deadline to this transaction, leaving application queries alone.
-      await probe`SET LOCAL statement_timeout = '3s'`
-      await probe`SELECT id FROM suggestions LIMIT 0`
-    })
-    .finally(() => {
-      healthProbe = undefined
-    })
-  let timer: ReturnType<typeof setTimeout> | undefined
   try {
-    // Fail before the server's idle timeout drops the request.
-    await Promise.race([
-      healthProbe,
-      new Promise<never>((_, reject) => {
-        timer = setTimeout(() => {
-          reject(new Error('timeout'))
-        }, 3000)
-      })
-    ])
+    await checkHealth()
   } catch {
     return c.json({ ok: false }, 503)
-  } finally {
-    clearTimeout(timer)
   }
   return c.json({
     ok: true,

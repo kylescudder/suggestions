@@ -2,6 +2,7 @@
 import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
 import postgres from 'postgres'
+import { stallHealthQueries } from './postgres-proxy'
 
 if (!process.env.TEST_DATABASE_URL)
   throw new Error('TEST_DATABASE_URL must point to disposable PostgreSQL')
@@ -15,6 +16,7 @@ const runtimeName = name + '_runtime'
 const otherName = name + '_other'
 const clients: ReturnType<typeof postgres>[] = []
 const created: string[] = []
+let proxy: Awaited<ReturnType<typeof stallHealthQueries>> | undefined
 
 function client(user: string, database = name) {
   const url = new URL(process.env.TEST_DATABASE_URL!)
@@ -91,7 +93,12 @@ try {
   applicationUrl.username = runtimeName
   applicationUrl.password = ''
   applicationUrl.pathname = '/' + name
-  process.env.DATABASE_URL = applicationUrl.toString()
+  proxy = await stallHealthQueries(
+    applicationUrl.toString(),
+    /^SELECT id FROM suggestions LIMIT 0$/i
+  )
+  proxy.allowNewConnections()
+  process.env.DATABASE_URL = proxy.url
   process.env.SUGGESTIONS_REVISION = 'health-probe-test'
   const { sql: applicationSql } = await import('../server/db')
   clients.push(applicationSql)
@@ -144,10 +151,32 @@ try {
     await owner`ROLLBACK`
   }
   assert.equal((await health()).status, 200)
+  try {
+    proxy.stall()
+    const responses = await Promise.all(Array.from({ length: 8 }, health))
+    for (const response of responses) {
+      assert.equal(response.status, 503)
+      assert.deepEqual(await response.json(), { ok: false })
+    }
+    proxy.allowNewConnections()
+    assert.equal((await health()).status, 200)
+    await within(
+      (async () => {
+        while (proxy!.stalledConnections) await Bun.sleep(10)
+      })(),
+      'The timed-out health connection was not retired'
+    )
+  } finally {
+    proxy.allowNewConnections()
+  }
+  console.log(
+    'Health recovered without releasing the permanently stalled socket'
+  )
   console.log(
     'Owner migrations/repeat, runtime CRUD/sequences, denied DDL, cross-database isolation and health probe cancellation/recovery passed'
   )
 } finally {
+  await proxy?.close()
   await Promise.all(clients.map((sql) => sql.end({ timeout: 1 })))
   for (const database of [otherName, name]) {
     if (created.includes(database))
