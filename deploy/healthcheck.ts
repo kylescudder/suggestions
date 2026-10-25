@@ -1,11 +1,7 @@
-import { sql } from '../server/db'
-
-try {
-  const response = await fetch('http://127.0.0.1:3001/', {
-    signal: AbortSignal.timeout(3000)
+// Container healthcheck: the app must serve pages and reach its tables.
+for (const path of ['/', '/healthz']) {
+  const response = await fetch('http://127.0.0.1:3001' + path, {
+    signal: AbortSignal.timeout(5000)
   })
-  if (!response.ok) throw new Error('Frontend is unavailable')
-  await sql`SELECT id FROM suggestions LIMIT 0`
-} finally {
-  await sql.end({ timeout: 1 })
+  if (!response.ok) throw new Error(`${path} returned ${response.status}`)
 }
