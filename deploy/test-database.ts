@@ -32,6 +32,20 @@ async function denied(operation: PromiseLike<unknown>) {
   })
 }
 
+async function within<T>(operation: PromiseLike<T>, message: string) {
+  let timer: ReturnType<typeof setTimeout> | undefined
+  try {
+    return await Promise.race([
+      operation,
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new Error(message)), 1500)
+      })
+    ])
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
 try {
   for (const role of [ownerName, runtimeName]) {
     await admin.unsafe(
@@ -72,8 +86,66 @@ try {
   await denied(runtime.unsafe('CREATE ROLE forbidden'))
   const foreign = client(runtimeName, otherName)
   await denied(foreign`SELECT 1`)
+
+  const applicationUrl = new URL(process.env.TEST_DATABASE_URL!)
+  applicationUrl.username = runtimeName
+  applicationUrl.password = ''
+  applicationUrl.pathname = '/' + name
+  process.env.DATABASE_URL = applicationUrl.toString()
+  process.env.SUGGESTIONS_REVISION = 'health-probe-test'
+  const { sql: applicationSql } = await import('../server/db')
+  clients.push(applicationSql)
+  const { default: application } = await import('../server/index')
+  const health = () =>
+    application.fetch(new Request('http://localhost/healthz'))
+  const healthy = await health()
+  assert.equal(healthy.status, 200)
+  assert.deepEqual(await healthy.json(), {
+    ok: true,
+    revision: 'health-probe-test'
+  })
+
+  await owner`BEGIN`
+  try {
+    await owner`LOCK TABLE suggestions IN ACCESS EXCLUSIVE MODE`
+    // Repeated bursts exceed the pool size and must not leave work behind.
+    for (let wave = 0; wave < 2; wave++) {
+      const responses = await Promise.all(Array.from({ length: 8 }, health))
+      for (const response of responses) {
+        assert.equal(response.status, 503)
+        assert.equal(response.headers.get('Cache-Control'), 'no-store')
+        assert.equal(
+          response.headers.get('X-Suggestions-Revision'),
+          'health-probe-test'
+        )
+        assert.deepEqual(await response.json(), { ok: false })
+      }
+      // The table stays locked: unrelated application work must still get a slot.
+      const [available] = await within(
+        applicationSql`SELECT 1 AS available`,
+        'Timed-out health probes exhausted the application database pool'
+      )
+      assert.equal(available.available, 1)
+      await within(
+        (async () => {
+          for (;;) {
+            const [activity] = await admin`
+              SELECT count(*)::int AS active FROM pg_stat_activity
+              WHERE datname = ${name} AND usename = ${runtimeName} AND state = 'active'
+            `
+            if (activity.active === 0) return
+            await Bun.sleep(25)
+          }
+        })(),
+        'The health SQL kept running after its deadline'
+      )
+    }
+  } finally {
+    await owner`ROLLBACK`
+  }
+  assert.equal((await health()).status, 200)
   console.log(
-    'Owner migrations/repeat, runtime CRUD/sequences, denied DDL and cross-database isolation passed'
+    'Owner migrations/repeat, runtime CRUD/sequences, denied DDL, cross-database isolation and health probe cancellation/recovery passed'
   )
 } finally {
   await Promise.all(clients.map((sql) => sql.end({ timeout: 1 })))

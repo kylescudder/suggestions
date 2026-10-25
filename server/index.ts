@@ -48,16 +48,35 @@ app.use('*', async (c, next) => {
   await next()
 })
 
+let healthProbe: Promise<unknown> | undefined
+
 app.get('/healthz', async (c) => {
   c.header('Cache-Control', 'no-store')
+  // Share one probe so stalled connections cannot fill the application pool.
+  healthProbe ??= sql
+    .begin(async (probe) => {
+      // Scope the deadline to this transaction, leaving application queries alone.
+      await probe`SET LOCAL statement_timeout = '3s'`
+      await probe`SELECT id FROM suggestions LIMIT 0`
+    })
+    .finally(() => {
+      healthProbe = undefined
+    })
+  let timer: ReturnType<typeof setTimeout> | undefined
   try {
     // Fail before the server's idle timeout drops the request.
     await Promise.race([
-      sql`SELECT id FROM suggestions LIMIT 0`,
-      Bun.sleep(3000).then(() => Promise.reject(new Error('timeout')))
+      healthProbe,
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(() => {
+          reject(new Error('timeout'))
+        }, 3000)
+      })
     ])
   } catch {
     return c.json({ ok: false }, 503)
+  } finally {
+    clearTimeout(timer)
   }
   return c.json({
     ok: true,
