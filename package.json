@@ -15,7 +15,8 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "prepare": "husky",
-    "lint": "eslint ."
+    "lint": "eslint .",
+    "test:connections": "bun deploy/test-connection-budget.ts"
   },
   "dependencies": {
     "@clerk/backend": "3.26.2",
