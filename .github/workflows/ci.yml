@@ -32,9 +32,7 @@ jobs:
         with:
           persist-credentials: false
       - name: Typecheck and build
-        env:
-          VITE_CLERK_PUBLISHABLE_KEY: ${{ vars.VITE_CLERK_PUBLISHABLE_KEY }}
-        run: docker build --target build --build-arg VITE_CLERK_PUBLISHABLE_KEY -t suggestions:checks .
+        run: docker build --target build -t suggestions:checks .
       - name: Check formatting
         run: docker run --rm suggestions:checks bun run format:check
       - name: Test
@@ -50,6 +48,4 @@ jobs:
             node:24-alpine@sha256:06d7adf3e0ef61a13f1d28682726366f97a15aa1888c934d3ecec86c33918b53 \
             node --test server.test.mjs
       - name: Build production image
-        env:
-          VITE_CLERK_PUBLISHABLE_KEY: ${{ vars.VITE_CLERK_PUBLISHABLE_KEY }}
-        run: docker build --build-arg VITE_CLERK_PUBLISHABLE_KEY --build-arg SUGGESTIONS_REVISION="$GITHUB_SHA" -t suggestions:ci .
+        run: docker build --build-arg SUGGESTIONS_REVISION="$GITHUB_SHA" -t suggestions:ci .

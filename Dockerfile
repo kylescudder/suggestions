@@ -7,8 +7,6 @@ RUN bun install --frozen-lockfile --ignore-scripts --network-concurrency 8
 
 FROM dependencies AS build
 COPY . .
-ARG VITE_CLERK_PUBLISHABLE_KEY
-ENV VITE_CLERK_PUBLISHABLE_KEY=$VITE_CLERK_PUBLISHABLE_KEY
 RUN bun run typecheck && bun run lint && bun run build
 
 FROM dependencies AS production-dependencies
@@ -24,6 +22,7 @@ COPY --from=production-dependencies --chown=bun:bun /app/node_modules ./node_mod
 COPY --from=build --chown=bun:bun /app/dist ./dist
 COPY --chown=bun:bun drizzle ./drizzle
 COPY --chown=bun:bun server ./server
+COPY --chown=bun:bun src/server ./src/server
 COPY --chown=bun:bun deploy/healthcheck.ts ./deploy/healthcheck.ts
 COPY --chown=bun:bun deploy/verify.ts deploy/database.ts ./deploy/
 COPY --chown=bun:bun deploy/import-convex.ts ./deploy/import-convex.ts

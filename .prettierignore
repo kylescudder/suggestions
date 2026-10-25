@@ -10,3 +10,4 @@ deploy-spool
 deploy/receiver
 # Generated
 drizzle/meta
+src/routeTree.gen.ts

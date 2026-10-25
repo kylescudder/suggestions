@@ -1,7 +1,5 @@
 @import 'tailwindcss';
 
-@config '../tailwind.config.js';
-
 /*
   The default border color has changed to `currentcolor` in Tailwind CSS v4,
   so we've added these compatibility styles to make sure everything still
@@ -25,10 +23,6 @@
   --color-dark: #171717;
 }
 
-.accent-text {
-  @apply text-slate-600;
-}
-
 body {
   font-family:
     'Inter Variable',
@@ -48,16 +42,6 @@ body {
     'Noto Color Emoji';
   color: var(--color-dark);
   background: var(--color-light);
-}
-
-/* only use this to update the style of the auth input fields. use a different class for all other input fields */
-.auth-input-field {
-  @apply rounded-container focus:border-primary focus:ring-primary w-full border border-gray-200 bg-white px-4 py-3 shadow-xs outline-hidden transition-shadow hover:shadow focus:ring-1;
-}
-
-/* only use this to update the style of the auth buttons. use the button class for all other buttons */
-.auth-button {
-  @apply bg-primary hover:bg-primary-hover w-full rounded px-4 py-3 font-semibold text-white shadow-xs transition-colors hover:shadow disabled:cursor-not-allowed disabled:opacity-50;
 }
 
 /* Magical sparkle animations */
@@ -152,34 +136,4 @@ body {
 
 .magical-button:hover::before {
   left: 100%;
-}
-
-/* Floating animation */
-@keyframes float {
-  0%,
-  100% {
-    transform: translateY(0px);
-  }
-  50% {
-    transform: translateY(-10px);
-  }
-}
-
-.animate-float {
-  animation: float 3s ease-in-out infinite;
-}
-
-/* Pulse glow animation */
-@keyframes pulse-glow {
-  0%,
-  100% {
-    box-shadow: 0 0 20px rgba(147, 51, 234, 0.3);
-  }
-  50% {
-    box-shadow: 0 0 40px rgba(147, 51, 234, 0.6);
-  }
-}
-
-.animate-pulse-glow {
-  animation: pulse-glow 2s ease-in-out infinite;
 }

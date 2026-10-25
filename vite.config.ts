@@ -1,16 +1,19 @@
+import { tanstackStart } from '@tanstack/react-start/plugin/vite'
 import { defineConfig } from 'vite'
-import react from '@vitejs/plugin-react'
-import path from 'path'
+import viteReact from '@vitejs/plugin-react'
+import tailwindcss from '@tailwindcss/vite'
 
-// https://vite.dev/config/
 export default defineConfig({
-  plugins: [react()],
   server: {
-    proxy: { '/api': 'http://localhost:3001' }
+    port: 3001
   },
   resolve: {
-    alias: {
-      '@': path.resolve(__dirname, './src')
-    }
-  }
+    tsconfigPaths: true,
+    // Clerk's React SDK needs the React 18+ built-in instead of the shim.
+    // See https://github.com/TanStack/router/issues/5738
+    alias: [
+      { find: 'use-sync-external-store/shim/index.js', replacement: 'react' }
+    ]
+  },
+  plugins: [tailwindcss(), tanstackStart(), viteReact()]
 })

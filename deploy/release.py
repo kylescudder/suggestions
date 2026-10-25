@@ -63,12 +63,10 @@ def main():
         if run("git", "status", "--porcelain", capture=True).strip():
             raise SystemExit("Commit the application and deployment changes before releasing")
         required = ("DATABASE_URL", "CLERK_SECRET_KEY", "CLERK_PUBLISHABLE_KEY",
-                    "VITE_CLERK_PUBLISHABLE_KEY", "ADMIN_EMAILS", "CLERK_AUTHORIZED_PARTIES")
+                    "ADMIN_EMAILS", "CLERK_AUTHORIZED_PARTIES")
         missing = [key for key in required if not config.get(key) or "..." in config[key]]
         if missing:
             raise SystemExit("Configure these .env fields first: " + ", ".join(missing))
-        if config["VITE_CLERK_PUBLISHABLE_KEY"] != config["CLERK_PUBLISHABLE_KEY"]:
-            raise SystemExit("Frontend and backend Clerk publishable keys must match")
         database = urlparse(config["DATABASE_URL"])
         if (database.hostname, database.username, database.path) != (
             "postgres", "suggestions_runtime", "/suggestions"
@@ -77,7 +75,6 @@ def main():
         stamp = datetime.datetime.now(datetime.timezone.utc).strftime("%Y%m%d%H%M%S")
         image = f"suggestions:{revision[:12]}-{stamp}"
         run("docker", "build", "--build-arg", "SUGGESTIONS_REVISION=" + revision,
-            "--build-arg", "VITE_CLERK_PUBLISHABLE_KEY=" + config["VITE_CLERK_PUBLISHABLE_KEY"],
             "-t", image, ".")
         owner = (PLATFORM / "projects/suggestions/owner-password").read_text().strip()
         with tempfile.TemporaryDirectory(prefix="suggestions-migration-") as directory:

@@ -1,4 +1,4 @@
-import { sql } from '../server/db'
+import { sql } from '../src/server/db'
 
 type LegacySuggestion = {
   _id: string

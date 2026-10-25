@@ -1,39 +1,45 @@
-import { useEffect, useState } from 'react'
-import { api, type Stats, type Suggestion } from './api'
+import { useState } from 'react'
+import {
+  keepPreviousData,
+  useMutation,
+  useQuery,
+  useQueryClient
+} from '@tanstack/react-query'
+import { TRPCClientError } from '@trpc/client'
+import { useTRPC } from '@/lib/trpc'
+import type { STATUSES } from '@/server/trpc'
 import { toast } from 'sonner'
 import { Hourglass, Eye, CheckCircle2, XCircle, Sparkles } from 'lucide-react'
 
 export function AdminDashboard() {
-  const [selectedStatus, setSelectedStatus] = useState<string>('')
-  const [suggestions, setSuggestions] = useState<Suggestion[]>()
-  const [stats, setStats] = useState<Stats>()
-
-  const [reloadKey, setReloadKey] = useState(0)
-  const [loadError, setLoadError] = useState<string>()
-
-  useEffect(() => {
-    Promise.all([
-      api.listSuggestions(selectedStatus || undefined),
-      api.getStats()
-    ]).then(
-      ([list, counts]) => {
-        setSuggestions(list)
-        setStats(counts)
-      },
-      (error: Error) => {
-        setLoadError(error.message)
-        console.error(error)
-      }
+  type Status = (typeof STATUSES)[number]
+  const [selectedStatus, setSelectedStatus] = useState<Status | ''>('')
+  const trpc = useTRPC()
+  const queryClient = useQueryClient()
+  const list = useQuery(
+    trpc.suggestions.list.queryOptions(
+      { status: selectedStatus || undefined },
+      // Keep the current list on screen while another filter loads.
+      { placeholderData: keepPreviousData }
     )
-  }, [selectedStatus, reloadKey])
+  )
+  const statsQuery = useQuery(trpc.suggestions.stats.queryOptions())
+  const updateStatus = useMutation(
+    trpc.suggestions.updateStatus.mutationOptions()
+  )
+  const suggestions = list.data
+  const stats = statsQuery.data
+  const loadError = list.error ?? statsQuery.error
 
   const handleStatusChange = async (
     suggestionId: number,
-    newStatus: string
+    newStatus: Status
   ) => {
     try {
-      await api.updateStatus(suggestionId, newStatus)
-      setReloadKey((k) => k + 1)
+      await updateStatus.mutateAsync({ id: suggestionId, status: newStatus })
+      await queryClient.invalidateQueries({
+        queryKey: trpc.suggestions.pathKey()
+      })
       toast.success('Status updated successfully!')
     } catch (error) {
       toast.error('Failed to update status')
@@ -70,7 +76,8 @@ export function AdminDashboard() {
   if (loadError) {
     return (
       <p className='py-20 text-center text-xl text-white'>
-        {loadError === 'Not an admin'
+        {loadError instanceof TRPCClientError &&
+        loadError.data?.code === 'FORBIDDEN'
           ? "Your account doesn't have admin access."
           : 'Failed to load suggestions.'}
       </p>
@@ -219,7 +226,10 @@ export function AdminDashboard() {
                   <select
                     value={suggestion.status}
                     onChange={(e) =>
-                      handleStatusChange(suggestion.id, e.target.value)
+                      handleStatusChange(
+                        suggestion.id,
+                        e.target.value as Status
+                      )
                     }
                     className='rounded-lg border border-white/30 bg-white/20 px-3 py-2 text-white backdrop-blur-xs focus:ring-2 focus:ring-purple-400 focus:outline-hidden'
                   >
