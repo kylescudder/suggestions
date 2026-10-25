@@ -1,4 +1,7 @@
-import { sql } from '../server/db'
+import { createDeploymentDatabase } from './database'
+
+if (!process.env.DATABASE_URL) throw new Error('DATABASE_URL is required')
+const sql = createDeploymentDatabase(process.env.DATABASE_URL)
 
 const origin = 'http://127.0.0.1:3001'
 const headers = { 'Content-Type': 'application/json' }

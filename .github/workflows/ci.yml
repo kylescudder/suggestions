@@ -41,7 +41,7 @@ jobs:
         run: |
           docker run --rm --network host \
             -e TEST_DATABASE_URL=postgres://postgres@127.0.0.1:5432/postgres \
-            suggestions:checks bun run test
+            suggestions:checks sh -c 'bun run test && bun run test:connections'
       - name: Test deployment hooks
         run: python3 -B -m unittest discover -s deploy -p 'test_*.py' -v
       - name: Test webhook receiver

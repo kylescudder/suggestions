@@ -24,7 +24,7 @@ COPY --from=production-dependencies --chown=bun:bun /app/node_modules ./node_mod
 COPY --from=build --chown=bun:bun /app/dist ./dist
 COPY --chown=bun:bun server ./server
 COPY --chown=bun:bun deploy/healthcheck.ts ./deploy/healthcheck.ts
-COPY --chown=bun:bun deploy/verify.ts ./deploy/verify.ts
+COPY --chown=bun:bun deploy/verify.ts deploy/database.ts ./deploy/
 COPY --chown=bun:bun deploy/import-convex.ts ./deploy/import-convex.ts
 USER bun
 EXPOSE 3001
