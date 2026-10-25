@@ -11,7 +11,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: suggestions-release
+  group: release
   cancel-in-progress: false
 
 env:
@@ -179,7 +179,7 @@ jobs:
             -H "CF-Access-Client-Id: $CF_ACCESS_CLIENT_ID" \
             -H "CF-Access-Client-Secret: $CF_ACCESS_CLIENT_SECRET" \
             --data "$body"
-      - name: Wait for production to run this commit
+      - name: Wait for production
         env:
           DIGEST: ${{ needs.publish.outputs.digest }}
           CF_ACCESS_CLIENT_ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
