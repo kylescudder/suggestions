@@ -28,3 +28,10 @@ command when using separate database roles.
 
 For the host's container deployment, database provisioning and rollback, see
 [deploy/README.md](deploy/README.md).
+
+## Runtime configuration
+
+Server settings are validated with `@t3-oss/env-core` and Zod when they are read.
+Production builds need no runtime credentials. Invalid settings report their names
+without logging secret values; see `.env.example` for the deployment settings.
+Migration commands validate database settings independently of Clerk configuration.

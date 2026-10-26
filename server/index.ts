@@ -1,14 +1,17 @@
 import { join, normalize } from 'node:path'
 import { createHealthCheck } from '../src/server/health'
 
-const revision = process.env.SUGGESTIONS_REVISION ?? 'unknown'
+import { readEnv } from '../src/server/env'
+
+const env = readEnv()
+const revision = env.SUGGESTIONS_REVISION
 const clientDirectory = join(import.meta.dir, '../dist/client')
 const serverEntry = '../dist/server/server.js'
 const { default: app } = (await import(serverEntry)) as {
   default: { fetch: (request: Request) => Response | Promise<Response> }
 }
 
-const checkHealth = createHealthCheck(process.env.DATABASE_URL!)
+const checkHealth = createHealthCheck(env.DATABASE_URL)
 
 // Served before the app, so health doesn't depend on Clerk or page rendering.
 async function health() {
@@ -51,4 +54,4 @@ async function fetch(request: Request) {
   return response
 }
 
-export default { port: Number(process.env.PORT ?? 3001), fetch }
+export default { port: env.PORT, fetch }
