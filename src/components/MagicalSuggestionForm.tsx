@@ -1,5 +1,6 @@
 import { useState } from 'react'
-import { api } from './api'
+import { useMutation } from '@tanstack/react-query'
+import { useTRPC } from '@/lib/trpc'
 import { toast } from 'sonner'
 import { Confetti } from './Confetti'
 
@@ -10,6 +11,10 @@ export function MagicalSuggestionForm() {
   const [authorEmail, setAuthorEmail] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [showConfetti, setShowConfetti] = useState(false)
+  const trpc = useTRPC()
+  const createSuggestion = useMutation(
+    trpc.suggestions.create.mutationOptions()
+  )
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -21,7 +26,7 @@ export function MagicalSuggestionForm() {
 
     setIsSubmitting(true)
     try {
-      await api.createSuggestion({
+      await createSuggestion.mutateAsync({
         title: title.trim(),
         description: description.trim(),
         authorName: authorName.trim() || undefined,

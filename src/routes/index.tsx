@@ -1,11 +1,16 @@
-import { SignIn, UserButton, useAuth } from '@clerk/react'
+import { SignIn, UserButton, useAuth } from '@clerk/tanstack-react-start'
+import { createFileRoute } from '@tanstack/react-router'
 import { Toaster } from 'sonner'
-import { MagicalSuggestionForm } from './MagicalSuggestionForm'
-import { AdminDashboard } from './AdminDashboard'
+import { MagicalSuggestionForm } from '@/components/MagicalSuggestionForm'
+import { AdminDashboard } from '@/components/AdminDashboard'
 import { useState } from 'react'
 import { Shield, Sparkles } from 'lucide-react'
 
-export default function App() {
+export const Route = createFileRoute('/')({
+  component: Home
+})
+
+function Home() {
   const [showAdmin, setShowAdmin] = useState(false)
   const { isSignedIn } = useAuth()
 

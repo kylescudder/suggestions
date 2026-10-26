@@ -56,7 +56,6 @@ jobs:
             org.opencontainers.image.revision=${{ github.sha }}
           build-args: |
             SUGGESTIONS_REVISION=${{ github.sha }}
-            VITE_CLERK_PUBLISHABLE_KEY=${{ vars.VITE_CLERK_PUBLISHABLE_KEY }}
           provenance: false
           sbom: false
       - name: Record digest
@@ -136,7 +135,7 @@ jobs:
       cancel-in-progress: false
     env:
       DEPLOY_URL: https://deploy-suggestions.kylescudder.co.uk/hooks/suggestions
-      HEALTH_URL: ${{ vars.SUGGESTIONS_BASE_URL }}/api/me
+      HEALTH_URL: ${{ vars.SUGGESTIONS_BASE_URL }}/healthz
     steps:
       - name: Check deploy endpoint protection
         env:

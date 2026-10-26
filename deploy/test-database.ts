@@ -117,7 +117,7 @@ try {
   proxy.allowNewConnections()
   process.env.DATABASE_URL = proxy.url
   process.env.SUGGESTIONS_REVISION = 'health-probe-test'
-  const { sql: applicationSql } = await import('../server/db')
+  const { sql: applicationSql } = await import('../src/server/db')
   clients.push(applicationSql)
   const { default: application } = await import('../server/index')
   const health = () =>
@@ -128,6 +128,98 @@ try {
     ok: true,
     revision: 'health-probe-test'
   })
+
+  // API procedures run on the application pool as the restricted runtime role.
+  const { appRouter } = await import('../src/server/trpc')
+  const caller = (userId: string | null) =>
+    appRouter.createCaller({
+      userId,
+      isAdmin: async (id) => id === 'admin'
+    })
+  async function rejectsWith(operation: Promise<unknown>, code: string) {
+    await assert.rejects(operation, (error: unknown) => {
+      return (error as { code?: string }).code === code
+    })
+  }
+  assert.deepEqual(await caller(null).me(), { isAdmin: false })
+  assert.deepEqual(await caller('someone').me(), { isAdmin: false })
+  assert.deepEqual(await caller('admin').me(), { isAdmin: true })
+  for (const userId of [null, 'someone']) {
+    const code = userId ? 'FORBIDDEN' : 'UNAUTHORIZED'
+    await rejectsWith(caller(userId).suggestions.list({}), code)
+    await rejectsWith(caller(userId).suggestions.stats(), code)
+  }
+  const visitor = caller(null).suggestions
+  const { id: first } = await visitor.create({
+    title: '  Trimmed  ',
+    description: ' Body ',
+    authorName: ' ',
+    authorEmail: ''
+  })
+  const { id: second } = await visitor.create({
+    title: 'Signed',
+    description: 'With author',
+    authorName: 'Cy',
+    authorEmail: 'cy@example.com'
+  })
+  await rejectsWith(
+    visitor.create({ title: ' ', description: 'x' }),
+    'BAD_REQUEST'
+  )
+  await rejectsWith(
+    caller(null).suggestions.updateStatus({ id: first, status: 'reviewed' }),
+    'UNAUTHORIZED'
+  )
+  const adminApi = caller('admin').suggestions
+  await rejectsWith(
+    // @ts-expect-error: statuses outside the enum are rejected at runtime too.
+    adminApi.updateStatus({ id: first, status: 'bogus' }),
+    'BAD_REQUEST'
+  )
+  await adminApi.updateStatus({ id: first, status: 'reviewed' })
+  const listed = await adminApi.list({})
+  assert.deepEqual(
+    listed.map(
+      ({ id, title, description, status, authorName, authorEmail }) => ({
+        id,
+        title,
+        description,
+        status,
+        authorName,
+        authorEmail
+      })
+    ),
+    [
+      {
+        id: second,
+        title: 'Signed',
+        description: 'With author',
+        status: 'pending',
+        authorName: 'Cy',
+        authorEmail: 'cy@example.com'
+      },
+      {
+        id: first,
+        title: 'Trimmed',
+        description: 'Body',
+        status: 'reviewed',
+        authorName: null,
+        authorEmail: null
+      }
+    ]
+  )
+  assert.deepEqual(
+    (await adminApi.list({ status: 'reviewed' })).map(({ id }) => id),
+    [first]
+  )
+  assert.deepEqual(await adminApi.stats(), {
+    all: 2,
+    pending: 1,
+    reviewed: 1,
+    implemented: 0,
+    rejected: 0
+  })
+  await runtime`DELETE FROM suggestions`
 
   await owner`BEGIN`
   try {
@@ -190,7 +282,7 @@ try {
     'Health recovered without releasing the permanently stalled socket'
   )
   console.log(
-    'Owner migrations/repeat, runtime CRUD/sequences, denied DDL and migration journal, cross-database isolation and health probe cancellation/recovery passed'
+    'Owner migrations/repeat, runtime CRUD/sequences, denied DDL and migration journal, cross-database isolation, API procedures and health probe cancellation/recovery passed'
   )
 } finally {
   await proxy?.close()

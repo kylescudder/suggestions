@@ -31,20 +31,20 @@ try {
   const asset = page.match(/src="([^"]+\.js)"/)?.[1]
   if (!asset) throw new Error('Built frontend asset is missing')
   await expect(asset, 200)
-  const me = (await (await expect('/api/me', 200)).json()) as {
-    isAdmin?: unknown
+  const me = (await (await expect('/api/trpc/me', 200)).json()) as {
+    result?: { data?: { isAdmin?: unknown } }
   }
-  if (me.isAdmin !== false)
+  if (me.result?.data?.isAdmin !== false)
     throw new Error('Signed-out user received admin access')
-  await expect('/api/suggestions', 401)
-  await expect('/api/suggestions/stats', 401)
-  await expect('/api/suggestions', 400, {
+  await expect('/api/trpc/suggestions.list?input=%7B%7D', 401)
+  await expect('/api/trpc/suggestions.stats', 401)
+  await expect('/api/trpc/suggestions.create', 400, {
     method: 'POST',
     headers,
     body: JSON.stringify({ title: '', description: '' })
   })
   const created = (await (
-    await expect('/api/suggestions', 201, {
+    await expect('/api/trpc/suggestions.create', 200, {
       method: 'POST',
       headers,
       body: JSON.stringify({
@@ -52,14 +52,15 @@ try {
         description: 'Temporary submission removed by the deployment check.'
       })
     })
-  ).json()) as { id?: unknown }
-  if (typeof created.id !== 'number' || !Number.isSafeInteger(created.id))
+  ).json()) as { result?: { data?: { id?: unknown } } }
+  const id = created.result?.data?.id
+  if (typeof id !== 'number' || !Number.isSafeInteger(id))
     throw new Error('Submission ID is missing')
-  createdId = created.id
-  await expect(`/api/suggestions/${createdId}`, 401, {
-    method: 'PATCH',
+  createdId = id
+  await expect('/api/trpc/suggestions.updateStatus', 401, {
+    method: 'POST',
     headers,
-    body: JSON.stringify({ status: 'implemented' })
+    body: JSON.stringify({ id: createdId, status: 'implemented' })
   })
   const [row] =
     await sql`SELECT status FROM suggestions WHERE id = ${createdId!}`

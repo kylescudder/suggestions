@@ -1,159 +1,54 @@
-import { Hono, type Context, type Next } from 'hono'
-import { serveStatic } from 'hono/bun'
-import { createClerkClient } from '@clerk/backend'
-import { count, desc, eq } from 'drizzle-orm'
-import { db } from './db'
-import { createHealthCheck } from './health'
-import { suggestions } from './schema'
+import { join, normalize } from 'node:path'
+import { createHealthCheck } from '../src/server/health'
 
-const STATUSES = ['pending', 'reviewed', 'implemented', 'rejected']
-
-// Comma-separated list of emails allowed into the admin dashboard.
-const ADMIN_EMAILS = new Set(
-  (process.env.ADMIN_EMAILS ?? '')
-    .split(',')
-    .map((e) => e.trim().toLowerCase())
-    .filter(Boolean)
-)
-
-const clerk = createClerkClient({
-  secretKey: process.env.CLERK_SECRET_KEY,
-  publishableKey: process.env.CLERK_PUBLISHABLE_KEY
-})
-
-// Cache admin lookups so we don't hit the Clerk API on every request.
-const adminCache = new Map<string, { isAdmin: boolean; expires: number }>()
-
-async function isAdmin(userId: string) {
-  const cached = adminCache.get(userId)
-  if (cached && cached.expires > Date.now()) return cached.isAdmin
-
-  const user = await clerk.users.getUser(userId)
-  const isAdmin = user.emailAddresses.some(
-    (e) =>
-      e.verification?.status === 'verified' &&
-      ADMIN_EMAILS.has(e.emailAddress.toLowerCase())
-  )
-  adminCache.set(userId, { isAdmin, expires: Date.now() + 60_000 })
-  return isAdmin
+const revision = process.env.SUGGESTIONS_REVISION ?? 'unknown'
+const clientDirectory = join(import.meta.dir, '../dist/client')
+const serverEntry = '../dist/server/server.js'
+const { default: app } = (await import(serverEntry)) as {
+  default: { fetch: (request: Request) => Response | Promise<Response> }
 }
-
-type Env = { Variables: { userId: string | null } }
-
-const app = new Hono<Env>()
-
-app.use('*', async (c, next) => {
-  c.header(
-    'X-Suggestions-Revision',
-    process.env.SUGGESTIONS_REVISION ?? 'unknown'
-  )
-  if (c.req.path.startsWith('/api/')) c.header('Cache-Control', 'no-store')
-  await next()
-})
 
 const checkHealth = createHealthCheck(process.env.DATABASE_URL!)
 
-app.get('/healthz', async (c) => {
-  c.header('Cache-Control', 'no-store')
+// Served before the app, so health doesn't depend on Clerk or page rendering.
+async function health() {
+  const headers = { 'Cache-Control': 'no-store' }
   try {
     await checkHealth()
   } catch {
-    return c.json({ ok: false }, 503)
+    return Response.json({ ok: false }, { status: 503, headers })
   }
-  return c.json({
-    ok: true,
-    revision: process.env.SUGGESTIONS_REVISION ?? 'unknown'
-  })
-})
-
-app.use('/api/*', async (c, next) => {
-  const state = await clerk.authenticateRequest(c.req.raw, {
-    authorizedParties: process.env.CLERK_AUTHORIZED_PARTIES?.split(',')
-  })
-  c.set('userId', state.toAuth()?.userId ?? null)
-  await next()
-})
-
-const requireAdmin = async (c: Context<Env>, next: Next) => {
-  const userId = c.get('userId')
-  if (!userId) return c.json({ error: 'Must be signed in' }, 401)
-  if (!(await isAdmin(userId))) return c.json({ error: 'Not an admin' }, 403)
-  await next()
+  return Response.json({ ok: true, revision }, { headers })
 }
 
-app.get('/api/me', async (c) => {
-  const userId = c.get('userId')
-  return c.json({ isAdmin: userId ? await isAdmin(userId) : false })
-})
+async function staticFile(pathname: string) {
+  const path = normalize(join(clientDirectory, decodeURIComponent(pathname)))
+  if (!path.startsWith(clientDirectory + '/')) return null
+  const file = Bun.file(path)
+  if (!(await file.exists())) return null
+  // Vite fingerprints everything under /assets/, so those can be cached forever.
+  return new Response(file, {
+    headers: {
+      'Cache-Control': pathname.startsWith('/assets/')
+        ? 'public, max-age=31536000, immutable'
+        : 'public, max-age=3600'
+    }
+  })
+}
 
-app.get('/api/suggestions', requireAdmin, async (c) => {
-  const status = c.req.query('status')
-  const rows = await db
-    .select({
-      id: suggestions.id,
-      title: suggestions.title,
-      description: suggestions.description,
-      status: suggestions.status,
-      authorName: suggestions.authorName,
-      authorEmail: suggestions.authorEmail,
-      createdAt: suggestions.createdAt
-    })
-    .from(suggestions)
-    .where(status ? eq(suggestions.status, status) : undefined)
-    .orderBy(desc(suggestions.createdAt))
-  return c.json(rows)
-})
+async function fetch(request: Request) {
+  const { pathname } = new URL(request.url)
+  const response =
+    pathname === '/healthz'
+      ? await health()
+      : (request.method === 'GET' &&
+          pathname !== '/' &&
+          (await staticFile(pathname))) ||
+        (await app.fetch(request))
+  response.headers.set('X-Suggestions-Revision', revision)
+  if (pathname.startsWith('/api/'))
+    response.headers.set('Cache-Control', 'no-store')
+  return response
+}
 
-app.get('/api/suggestions/stats', requireAdmin, async (c) => {
-  const rows = await db
-    .select({ status: suggestions.status, count: count() })
-    .from(suggestions)
-    .groupBy(suggestions.status)
-  const stats: Record<string, number> = { all: 0 }
-  for (const s of STATUSES) stats[s] = 0
-  for (const r of rows) {
-    stats[r.status] = r.count
-    stats.all += r.count
-  }
-  return c.json(stats)
-})
-
-app.post('/api/suggestions', async (c) => {
-  const body = await c.req.json<{
-    title?: string
-    description?: string
-    authorName?: string
-    authorEmail?: string
-  }>()
-  if (!body.title?.trim() || !body.description?.trim()) {
-    return c.json({ error: 'Title and description are required' }, 400)
-  }
-  const [row] = await db
-    .insert(suggestions)
-    .values({
-      title: body.title.trim(),
-      description: body.description.trim(),
-      authorName: body.authorName || null,
-      authorEmail: body.authorEmail || null
-    })
-    .returning({ id: suggestions.id })
-  return c.json(row, 201)
-})
-
-app.patch('/api/suggestions/:id', requireAdmin, async (c) => {
-  const { status } = await c.req.json<{ status?: string }>()
-  if (!status || !STATUSES.includes(status)) {
-    return c.json({ error: 'Invalid status' }, 400)
-  }
-  await db
-    .update(suggestions)
-    .set({ status })
-    .where(eq(suggestions.id, Number(c.req.param('id'))))
-  return c.json({ ok: true })
-})
-
-// Serve the built frontend in production.
-app.use('/*', serveStatic({ root: './dist' }))
-app.get('/*', serveStatic({ path: './dist/index.html' }))
-
-export default { port: Number(process.env.PORT ?? 3001), fetch: app.fetch }
+export default { port: Number(process.env.PORT ?? 3001), fetch }

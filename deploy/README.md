@@ -14,7 +14,7 @@ are documented in [deploy-core](https://github.com/kylescudder/deploy-core).
 There are no vendored engine files, lock files or sync PRs. Do not install an
 app-specific LaunchAgent. Apply future engine changes once through the central service.
 
-The app is React/Vite with a Hono API on Bun. One ARM64 container serves both
+The app is TanStack Start with a tRPC API, served by Bun. One ARM64 container serves both
 the API and the frontend on `suggestions:3001`, joining `platform-web` and the
 private `platform-db` network. It publishes no host ports. Memory is limited to
 256 MiB, with a non-root user, read-only root filesystem and bounded logs.
@@ -81,13 +81,14 @@ checks restore the previous image. Runtime credentials remain restricted.
 
 The workflow waits for the host's completed acceptance record over an
 Access-protected GET to the same webhook path, matching both commit and image
-digest, and for `/api/me` to report that commit in `X-Suggestions-Revision`.
+digest, and for `/healthz` to report that commit in `X-Suggestions-Revision`.
 The receiver sees only a read-only `state/public/` mount containing acceptance
 metadata. The host publishes that record after database/API checks finish;
 a responding candidate alone cannot make CI report success.
 `DEPLOY_ENABLED=true` and
 `SUGGESTIONS_BASE_URL=https://suggestions.kylescudder.co.uk` control deployment.
-`VITE_CLERK_PUBLISHABLE_KEY` is a repository variable baked into the frontend.
+The Clerk publishable key is read at runtime from the host's `.env`, so the image
+has no build-time configuration.
 
 Private receiver settings are `.env.deploy-hook` and `secrets/`. Release
 history, queued delivery and failure records are under `state/`; the latest
@@ -114,8 +115,7 @@ Create `.env` with mode 0600, using unquoted, single-line values:
 ```dotenv
 DATABASE_URL=postgres://suggestions_runtime:<runtime-password>@postgres:5432/suggestions
 PORT=3001
-VITE_CLERK_PUBLISHABLE_KEY=<Clerk publishable key>
-CLERK_PUBLISHABLE_KEY=<same Clerk publishable key>
+CLERK_PUBLISHABLE_KEY=<Clerk publishable key>
 CLERK_SECRET_KEY=<matching Clerk secret key>
 CLERK_AUTHORIZED_PARTIES=https://suggestions.kylescudder.co.uk
 ADMIN_EMAILS=kyle@kylescudder.co.uk
