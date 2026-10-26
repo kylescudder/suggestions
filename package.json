@@ -24,7 +24,7 @@
     "@clerk/react": "6.17.8",
     "clsx": "2.1.1",
     "drizzle-orm": "0.45.4",
-    "hono": "4.13.13",
+    "hono": "4.13.14",
     "lucide-react": "1.61.0",
     "postgres": "3.4.9",
     "react": "19.3.1",
