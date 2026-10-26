@@ -117,6 +117,8 @@ try {
   proxy.allowNewConnections()
   process.env.DATABASE_URL = proxy.url
   process.env.SUGGESTIONS_REVISION = 'health-probe-test'
+  process.env.CLERK_PUBLISHABLE_KEY = 'pk_test_ZXhhbXBsZS5jb20k'
+  process.env.CLERK_SECRET_KEY = 'sk_test_fixture'
   const { sql: applicationSql } = await import('../src/server/db')
   clients.push(applicationSql)
   const { default: application } = await import('../server/index')

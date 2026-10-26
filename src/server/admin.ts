@@ -1,13 +1,9 @@
 import '@tanstack/react-start/server-only'
 import { clerkClient } from '@clerk/tanstack-react-start/server'
+import { readEnv } from './env'
 
 // Comma-separated list of emails allowed into the admin dashboard.
-const ADMIN_EMAILS = new Set(
-  (process.env.ADMIN_EMAILS ?? '')
-    .split(',')
-    .map((e) => e.trim().toLowerCase())
-    .filter(Boolean)
-)
+const ADMIN_EMAILS = new Set(readEnv().ADMIN_EMAILS)
 
 // Cache admin lookups so we don't hit the Clerk API on every request.
 const adminCache = new Map<string, { isAdmin: boolean; expires: number }>()
