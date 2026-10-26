@@ -1,8 +1,10 @@
 import { Hono, type Context, type Next } from 'hono'
 import { serveStatic } from 'hono/bun'
 import { createClerkClient } from '@clerk/backend'
-import { sql } from './db'
+import { count, desc, eq } from 'drizzle-orm'
+import { db } from './db'
 import { createHealthCheck } from './health'
+import { suggestions } from './schema'
 
 const STATUSES = ['pending', 'reviewed', 'implemented', 'rejected']
 
@@ -86,20 +88,27 @@ app.get('/api/me', async (c) => {
 
 app.get('/api/suggestions', requireAdmin, async (c) => {
   const status = c.req.query('status')
-  const rows = await sql`
-    SELECT id, title, description, status, author_name AS "authorName",
-      author_email AS "authorEmail", created_at AS "createdAt"
-    FROM suggestions
-    ${status ? sql`WHERE status = ${status}` : sql``}
-    ORDER BY created_at DESC
-  `
+  const rows = await db
+    .select({
+      id: suggestions.id,
+      title: suggestions.title,
+      description: suggestions.description,
+      status: suggestions.status,
+      authorName: suggestions.authorName,
+      authorEmail: suggestions.authorEmail,
+      createdAt: suggestions.createdAt
+    })
+    .from(suggestions)
+    .where(status ? eq(suggestions.status, status) : undefined)
+    .orderBy(desc(suggestions.createdAt))
   return c.json(rows)
 })
 
 app.get('/api/suggestions/stats', requireAdmin, async (c) => {
-  const rows = await sql<{ status: string; count: number }[]>`
-    SELECT status, count(*)::int AS count FROM suggestions GROUP BY status
-  `
+  const rows = await db
+    .select({ status: suggestions.status, count: count() })
+    .from(suggestions)
+    .groupBy(suggestions.status)
   const stats: Record<string, number> = { all: 0 }
   for (const s of STATUSES) stats[s] = 0
   for (const r of rows) {
@@ -119,16 +128,15 @@ app.post('/api/suggestions', async (c) => {
   if (!body.title?.trim() || !body.description?.trim()) {
     return c.json({ error: 'Title and description are required' }, 400)
   }
-  const [row] = await sql`
-    INSERT INTO suggestions (title, description, author_name, author_email)
-    VALUES (
-      ${body.title.trim()},
-      ${body.description.trim()},
-      ${body.authorName || null},
-      ${body.authorEmail || null}
-    )
-    RETURNING id
-  `
+  const [row] = await db
+    .insert(suggestions)
+    .values({
+      title: body.title.trim(),
+      description: body.description.trim(),
+      authorName: body.authorName || null,
+      authorEmail: body.authorEmail || null
+    })
+    .returning({ id: suggestions.id })
   return c.json(row, 201)
 })
 
@@ -137,7 +145,10 @@ app.patch('/api/suggestions/:id', requireAdmin, async (c) => {
   if (!status || !STATUSES.includes(status)) {
     return c.json({ error: 'Invalid status' }, 400)
   }
-  await sql`UPDATE suggestions SET status = ${status} WHERE id = ${Number(c.req.param('id'))}`
+  await db
+    .update(suggestions)
+    .set({ status })
+    .where(eq(suggestions.id, Number(c.req.param('id'))))
   return c.json({ ok: true })
 })
 

@@ -10,8 +10,11 @@ A React + Vite frontend with a small [Hono](https://hono.dev) API server running
    - `ADMIN_EMAILS`: verified email addresses allowed into the admin dashboard
 2. `bun install`
 
-Apply `server/schema.sql` with `bun run db:migrate`. Run migrations with a schema
-owner credential; the production server can use a restricted data-only role.
+The schema is defined with [Drizzle](https://orm.drizzle.team) in `server/schema.ts`.
+Apply migrations from `drizzle/` with `bun run db:migrate`, and run
+`bun run db:generate` to create a migration after changing the schema. Run
+migrations with a schema owner credential; the production server can use a
+restricted data-only role.
 
 ## Development
 
