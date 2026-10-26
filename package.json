@@ -8,7 +8,7 @@
     "build": "vite build",
     "start": "NODE_ENV=production bun server/index.ts",
     "typecheck": "tsc --noEmit",
-    "test": "bun test server/env.test.ts && bun deploy/test-database.ts",
+    "test": "bun test ./server/*.test.ts",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "bun server/migrate.ts",
     "format": "prettier --write .",

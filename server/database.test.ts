@@ -1,8 +1,9 @@
 // Runs only against an explicitly supplied disposable CI PostgreSQL service.
 import assert from 'node:assert/strict'
+import { afterAll, beforeAll, test } from 'bun:test'
 import { randomUUID } from 'node:crypto'
 import postgres from 'postgres'
-import { stallHealthQueries } from './postgres-proxy'
+import { stallHealthQueries } from '../deploy/postgres-proxy'
 
 if (!process.env.TEST_DATABASE_URL)
   throw new Error('TEST_DATABASE_URL must point to disposable PostgreSQL')
@@ -48,7 +49,21 @@ async function within<T>(operation: PromiseLike<T>, message: string) {
   }
 }
 
-try {
+let owner: ReturnType<typeof postgres>
+let runtime: ReturnType<typeof postgres>
+let ownerUrl: URL
+let applicationSql: ReturnType<typeof postgres>
+let health: () => Promise<Response>
+const originalEnv = Object.fromEntries(
+  [
+    'DATABASE_URL',
+    'SUGGESTIONS_REVISION',
+    'CLERK_PUBLISHABLE_KEY',
+    'CLERK_SECRET_KEY'
+  ].map((key) => [key, process.env[key]])
+)
+
+beforeAll(async () => {
   for (const role of [ownerName, runtimeName]) {
     await admin.unsafe(
       `CREATE ROLE "${role}" LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT`
@@ -61,33 +76,81 @@ try {
     await admin.unsafe(`REVOKE ALL ON DATABASE "${database}" FROM PUBLIC`)
   }
   await admin.unsafe(`GRANT CONNECT ON DATABASE "${name}" TO "${runtimeName}"`)
-  const owner = client(ownerName)
+  owner = client(ownerName)
   await owner.unsafe(`
     REVOKE ALL ON SCHEMA public FROM PUBLIC;
     GRANT USAGE ON SCHEMA public TO "${runtimeName}";
     ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO "${runtimeName}";
     ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT USAGE, SELECT ON SEQUENCES TO "${runtimeName}";
   `)
-  const ownerUrl = new URL(process.env.TEST_DATABASE_URL!)
+  ownerUrl = new URL(process.env.TEST_DATABASE_URL!)
   ownerUrl.username = ownerName
   ownerUrl.password = ''
   ownerUrl.pathname = '/' + name
-  // Run the real migration entrypoint twice; the second run must be a no-op.
-  for (let run = 0; run < 2; run++) {
-    const migration = Bun.spawn(
-      ['bun', new URL('../server/migrate.ts', import.meta.url).pathname],
-      {
-        env: { ...process.env, DATABASE_URL: ownerUrl.toString() },
-        stdout: 'ignore',
-        stderr: 'inherit'
-      }
-    )
-    assert.equal(await migration.exited, 0, 'Migration failed')
+  // Create the fixture through the real migration entrypoint. The test reruns it.
+  const migration = Bun.spawn(
+    ['bun', new URL('../server/migrate.ts', import.meta.url).pathname],
+    {
+      env: { ...process.env, DATABASE_URL: ownerUrl.toString() },
+      stdout: 'ignore',
+      stderr: 'inherit'
+    }
+  )
+  assert.equal(await migration.exited, 0, 'Migration failed')
+  runtime = client(runtimeName)
+  const applicationUrl = new URL(process.env.TEST_DATABASE_URL!)
+  applicationUrl.username = runtimeName
+  applicationUrl.password = ''
+  applicationUrl.pathname = '/' + name
+  proxy = await stallHealthQueries(
+    applicationUrl.toString(),
+    /^SELECT id FROM suggestions LIMIT 0$/i
+  )
+  proxy.allowNewConnections()
+  process.env.DATABASE_URL = proxy.url
+  process.env.SUGGESTIONS_REVISION = 'health-probe-test'
+  process.env.CLERK_PUBLISHABLE_KEY = 'pk_test_ZXhhbXBsZS5jb20k'
+  process.env.CLERK_SECRET_KEY = 'sk_test_fixture'
+  const { sql } = await import('../src/server/db')
+  applicationSql = sql
+  clients.push(applicationSql)
+  const { default: application } = await import('./index')
+  health = () => application.fetch(new Request('http://localhost/healthz'))
+})
+
+afterAll(async () => {
+  await proxy?.close()
+  await Promise.all(clients.map((sql) => sql.end({ timeout: 1 })))
+  for (const database of [otherName, name]) {
+    if (created.includes(database))
+      await admin.unsafe(`DROP DATABASE "${database}" WITH (FORCE)`)
   }
+  for (const role of [runtimeName, ownerName]) {
+    if (created.includes(role)) await admin.unsafe(`DROP ROLE "${role}"`)
+  }
+  await admin.end({ timeout: 1 })
+  for (const [key, value] of Object.entries(originalEnv)) {
+    if (value === undefined) delete process.env[key]
+    else process.env[key] = value
+  }
+})
+
+test('owner migrations are repeatable and preserve their journal', async () => {
+  const migration = Bun.spawn(
+    ['bun', new URL('./migrate.ts', import.meta.url).pathname],
+    {
+      env: { ...process.env, DATABASE_URL: ownerUrl.toString() },
+      stdout: 'ignore',
+      stderr: 'inherit'
+    }
+  )
+  assert.equal(await migration.exited, 0, 'Migration failed')
   const [journal] =
     await owner`SELECT count(*)::int AS applied FROM drizzle.__drizzle_migrations`
   assert.equal(journal.applied, 1)
-  const runtime = client(runtimeName)
+})
+
+test('restricted runtime supports CRUD while DDL, journals and other databases are denied', async () => {
   const [row] = await runtime`
     INSERT INTO suggestions(title, description) VALUES ('CI check', 'Disposable test')
     RETURNING id, status
@@ -105,32 +168,9 @@ try {
   await denied(runtime`SELECT hash FROM drizzle.__drizzle_migrations`)
   const foreign = client(runtimeName, otherName)
   await denied(foreign`SELECT 1`)
+})
 
-  const applicationUrl = new URL(process.env.TEST_DATABASE_URL!)
-  applicationUrl.username = runtimeName
-  applicationUrl.password = ''
-  applicationUrl.pathname = '/' + name
-  proxy = await stallHealthQueries(
-    applicationUrl.toString(),
-    /^SELECT id FROM suggestions LIMIT 0$/i
-  )
-  proxy.allowNewConnections()
-  process.env.DATABASE_URL = proxy.url
-  process.env.SUGGESTIONS_REVISION = 'health-probe-test'
-  process.env.CLERK_PUBLISHABLE_KEY = 'pk_test_ZXhhbXBsZS5jb20k'
-  process.env.CLERK_SECRET_KEY = 'sk_test_fixture'
-  const { sql: applicationSql } = await import('../src/server/db')
-  clients.push(applicationSql)
-  const { default: application } = await import('../server/index')
-  const health = () =>
-    application.fetch(new Request('http://localhost/healthz'))
-  const healthy = await health()
-  assert.equal(healthy.status, 200)
-  assert.deepEqual(await healthy.json(), {
-    ok: true,
-    revision: 'health-probe-test'
-  })
-
+test('API inputs, public submissions and admin permissions are enforced', async () => {
   // API procedures run on the application pool as the restricted runtime role.
   const { appRouter } = await import('../src/server/trpc')
   const caller = (userId: string | null) =>
@@ -222,6 +262,17 @@ try {
     rejected: 0
   })
   await runtime`DELETE FROM suggestions`
+})
+
+test('health deadlines cancel SQL, preserve the application pool and recover from stalled sockets', async () => {
+  const healthProxy = proxy
+  assert.ok(healthProxy)
+  const healthy = await health()
+  assert.equal(healthy.status, 200)
+  assert.deepEqual(await healthy.json(), {
+    ok: true,
+    revision: 'health-probe-test'
+  })
 
   await owner`BEGIN`
   try {
@@ -263,38 +314,21 @@ try {
   }
   assert.equal((await health()).status, 200)
   try {
-    proxy.stall()
+    healthProxy.stall()
     const responses = await Promise.all(Array.from({ length: 8 }, health))
     for (const response of responses) {
       assert.equal(response.status, 503)
       assert.deepEqual(await response.json(), { ok: false })
     }
-    proxy.allowNewConnections()
+    healthProxy.allowNewConnections()
     assert.equal((await health()).status, 200)
     await within(
       (async () => {
-        while (proxy!.stalledConnections) await Bun.sleep(10)
+        while (healthProxy.stalledConnections) await Bun.sleep(10)
       })(),
       'The timed-out health connection was not retired'
     )
   } finally {
-    proxy.allowNewConnections()
+    healthProxy.allowNewConnections()
   }
-  console.log(
-    'Health recovered without releasing the permanently stalled socket'
-  )
-  console.log(
-    'Owner migrations/repeat, runtime CRUD/sequences, denied DDL and migration journal, cross-database isolation, API procedures and health probe cancellation/recovery passed'
-  )
-} finally {
-  await proxy?.close()
-  await Promise.all(clients.map((sql) => sql.end({ timeout: 1 })))
-  for (const database of [otherName, name]) {
-    if (created.includes(database))
-      await admin.unsafe(`DROP DATABASE "${database}" WITH (FORCE)`)
-  }
-  for (const role of [runtimeName, ownerName]) {
-    if (created.includes(role)) await admin.unsafe(`DROP ROLE "${role}"`)
-  }
-  await admin.end({ timeout: 1 })
-}
+}, 20000)
