@@ -38,9 +38,10 @@ Migration commands validate database settings independently of Clerk configurati
 
 ## Database tests
 
-`TEST_DATABASE_URL=postgres://... bun run test` runs the env checks and four named
+`TEST_DATABASE_URL=postgres://... bun run test` runs the env checks and five named
 Bun integration tests against an explicitly supplied disposable PostgreSQL service:
 repeatable migrations, restricted-role permissions, API validation/auth, and
-health-probe cancellation/recovery. Fixtures are created and removed by test hooks,
+health-probe cancellation/recovery, plus application connection reuse, idle retirement
+and reconnection. Fixtures are created and removed by test hooks,
 and modified runtime environment values are restored after the suite.
 The deployment receiver continues to run through its separate Node test command.
