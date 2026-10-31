@@ -332,3 +332,25 @@ test('health deadlines cancel SQL, preserve the application pool and recover fro
     healthProxy.allowNewConnections()
   }
 }, 20000)
+
+test('application pool reuses connections, retires idle backends and reconnects', async () => {
+  const [first] = await applicationSql`SELECT pg_backend_pid() AS pid`
+  const [reused] = await applicationSql`SELECT pg_backend_pid() AS pid`
+  assert.equal(reused.pid, first.pid)
+
+  // Observe PostgreSQL without issuing app queries that reset its idle timer.
+  const deadline = Date.now() + 25000
+  let connected = true
+  while (connected && Date.now() < deadline) {
+    const [activity] = await admin`
+      SELECT count(*)::int AS connections FROM pg_stat_activity
+      WHERE datname = ${name} AND usename = ${runtimeName} AND pid = ${first.pid}
+    `
+    connected = activity.connections > 0
+    if (connected) await Bun.sleep(250)
+  }
+  assert.equal(connected, false, 'Idle application connection was not retired')
+
+  const [reconnected] = await applicationSql`SELECT pg_backend_pid() AS pid`
+  assert.notEqual(reconnected.pid, first.pid)
+}, 30000)
