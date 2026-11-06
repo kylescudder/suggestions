@@ -59,6 +59,48 @@ test('missing Clerk credentials fail runtime validation', () => {
   )
 })
 
+test('Better Auth settings are required only when it is selected', () => {
+  const better = {
+    DATABASE_URL: valid.DATABASE_URL,
+    AUTH_PROVIDER: 'better-auth',
+    BETTER_AUTH_URL: 'https://suggestions.example.com',
+    BETTER_AUTH_SECRET:
+      'fixture-secret-that-is-longer-than-thirty-two-characters',
+    BREVO_API_KEY: 'fixture-api-key',
+    AUTH_EMAIL_FROM: 'suggestions@example.com'
+  }
+  expect(readEnv(better).AUTH_PROVIDER).toBe('better-auth')
+  expect(readEnv(better).CLERK_SECRET_KEY).toBeUndefined()
+  expect(readEnv(better).AUTH_EMAIL_DAILY_LIMIT).toBe(40)
+  for (const key of [
+    'BETTER_AUTH_URL',
+    'BETTER_AUTH_SECRET',
+    'BREVO_API_KEY',
+    'AUTH_EMAIL_FROM'
+  ])
+    expect(() => readEnv({ ...better, [key]: '' })).toThrow(key)
+  expect(() => readEnv({ ...better, BETTER_AUTH_SECRET: 'short' })).toThrow(
+    'BETTER_AUTH_SECRET'
+  )
+  expect(() =>
+    readEnv({
+      ...better,
+      NODE_ENV: 'production',
+      BETTER_AUTH_URL: 'http://suggestions.example.com'
+    })
+  ).toThrow('BETTER_AUTH_URL')
+  expect(() => readEnv({ ...better, AUTH_EMAIL_DAILY_LIMIT: '301' })).toThrow(
+    'AUTH_EMAIL_DAILY_LIMIT'
+  )
+  expect(() => readEnv({ ...valid, AUTH_PROVIDER: 'unknown' })).toThrow(
+    'AUTH_PROVIDER'
+  )
+  // Keeping the Clerk keys available is supported for a configuration rollback.
+  expect(
+    readEnv({ ...valid, ...better, AUTH_PROVIDER: 'clerk' }).AUTH_PROVIDER
+  ).toBe('clerk')
+})
+
 test('admin emails and allowed origins are validated and normalized', () => {
   const env = readEnv({
     ...valid,

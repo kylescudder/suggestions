@@ -4,6 +4,7 @@ import { readEnv } from './env'
 
 export function requestOptions() {
   const env = readEnv()
+  if (env.AUTH_PROVIDER === 'better-auth') return {}
   return {
     requestMiddleware: [
       clerkMiddleware(() => ({

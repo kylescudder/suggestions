@@ -4,6 +4,7 @@ import { afterAll, beforeAll, test } from 'bun:test'
 import { randomUUID } from 'node:crypto'
 import postgres from 'postgres'
 import { stallHealthQueries } from '../deploy/postgres-proxy'
+import { virtualAuthenticator } from './webauthn-fixture'
 
 if (!process.env.TEST_DATABASE_URL)
   throw new Error('TEST_DATABASE_URL must point to disposable PostgreSQL')
@@ -54,12 +55,21 @@ let runtime: ReturnType<typeof postgres>
 let ownerUrl: URL
 let applicationSql: ReturnType<typeof postgres>
 let health: () => Promise<Response>
+let application: { fetch(request: Request): Promise<Response> }
+let preservedAnonymousSuggestion: { before: unknown; after: unknown }
+const authOrigin = 'https://suggestions.auth.test'
 const originalEnv = Object.fromEntries(
   [
     'DATABASE_URL',
     'SUGGESTIONS_REVISION',
     'CLERK_PUBLISHABLE_KEY',
-    'CLERK_SECRET_KEY'
+    'CLERK_SECRET_KEY',
+    'AUTH_PROVIDER',
+    'BETTER_AUTH_URL',
+    'BETTER_AUTH_SECRET',
+    'BREVO_API_KEY',
+    'AUTH_EMAIL_FROM',
+    'ADMIN_EMAILS'
   ].map((key) => [key, process.env[key]])
 )
 
@@ -87,6 +97,20 @@ beforeAll(async () => {
   ownerUrl.username = ownerName
   ownerUrl.password = ''
   ownerUrl.pathname = '/' + name
+  // Simulate the existing production schema and anonymous data before adding
+  // auth tables. The baseline explicitly supports this adoption path.
+  await owner.unsafe(
+    await Bun.file(
+      new URL('../drizzle/0000_baseline.sql', import.meta.url)
+    ).text()
+  )
+  const [anonymous] = await owner`
+    INSERT INTO suggestions(title, description, status, legacy_convex_id, legacy_convex_created_at)
+    VALUES ('Existing anonymous idea', 'Keep this content and identity unchanged', 'reviewed', 'pre-auth-fixture', 1740000000123.456)
+    RETURNING id
+  `
+  const [beforeAuth] =
+    await owner`SELECT row_to_json(s) AS snapshot FROM suggestions s WHERE id = ${anonymous.id}`
   // Create the fixture through the real migration entrypoint. The test reruns it.
   const migration = Bun.spawn(
     ['bun', new URL('../server/migrate.ts', import.meta.url).pathname],
@@ -97,6 +121,13 @@ beforeAll(async () => {
     }
   )
   assert.equal(await migration.exited, 0, 'Migration failed')
+  const [afterAuth] =
+    await owner`SELECT row_to_json(s) AS snapshot FROM suggestions s WHERE id = ${anonymous.id}`
+  preservedAnonymousSuggestion = {
+    before: beforeAuth.snapshot,
+    after: afterAuth.snapshot
+  }
+  await owner`DELETE FROM suggestions WHERE id = ${anonymous.id}`
   runtime = client(runtimeName)
   const applicationUrl = new URL(process.env.TEST_DATABASE_URL!)
   applicationUrl.username = runtimeName
@@ -111,10 +142,16 @@ beforeAll(async () => {
   process.env.SUGGESTIONS_REVISION = 'health-probe-test'
   process.env.CLERK_PUBLISHABLE_KEY = 'pk_test_ZXhhbXBsZS5jb20k'
   process.env.CLERK_SECRET_KEY = 'sk_test_fixture'
+  process.env.AUTH_PROVIDER = 'better-auth'
+  process.env.BETTER_AUTH_URL = authOrigin
+  process.env.BETTER_AUTH_SECRET = randomUUID() + randomUUID()
+  process.env.BREVO_API_KEY = 'fixture-never-used-to-send'
+  process.env.AUTH_EMAIL_FROM = 'suggestions@example.com'
+  process.env.ADMIN_EMAILS = 'admin@example.com,second@example.com'
   const { sql } = await import('../src/server/db')
   applicationSql = sql
   clients.push(applicationSql)
-  const { default: application } = await import('./index')
+  application = (await import('./index')).default
   health = () => application.fetch(new Request('http://localhost/healthz'))
 })
 
@@ -147,7 +184,14 @@ test('owner migrations are repeatable and preserve their journal', async () => {
   assert.equal(await migration.exited, 0, 'Migration failed')
   const [journal] =
     await owner`SELECT count(*)::int AS applied FROM drizzle.__drizzle_migrations`
-  assert.equal(journal.applied, 1)
+  assert.equal(journal.applied, 2)
+})
+
+test('adding authentication preserves existing anonymous suggestions and legacy fields', () => {
+  assert.deepEqual(
+    preservedAnonymousSuggestion.after,
+    preservedAnonymousSuggestion.before
+  )
 })
 
 test('restricted runtime supports CRUD while DDL, journals and other databases are denied', async () => {
@@ -354,3 +398,539 @@ test('application pool reuses connections, retires idle backends and reconnects'
   const [reconnected] = await applicationSql`SELECT pg_backend_pid() AS pid`
   assert.notEqual(reconnected.pid, first.pid)
 }, 30000)
+
+let fixtureNumber = 0
+async function authFixture(dailyEmailLimit = 40, failMail = false) {
+  await owner`DELETE FROM auth_user`
+  await owner`DELETE FROM auth_verification`
+  await owner`DELETE FROM auth_rate_limit`
+  await owner`DELETE FROM auth_email_limit`
+  const { db } = await import('../src/server/db')
+  const { createSuggestionsAuth } = await import('../src/server/auth-factory')
+  const sent = new Map<string, string>()
+  const settings = {
+    baseURL: authOrigin,
+    secret: process.env.BETTER_AUTH_SECRET!,
+    adminEmails: ['admin@example.com', 'second@example.com'],
+    dailyEmailLimit
+  }
+  const auth = createSuggestionsAuth(db, settings, async (email, otp) => {
+    if (failMail) throw new Error('Simulated mail outage')
+    sent.set(email, otp)
+  })
+  const ip = `203.0.113.${++fixtureNumber}`
+  function request(
+    path: string,
+    body?: unknown,
+    cookie = '',
+    extra: Record<string, string> = {}
+  ) {
+    return auth.handler(
+      new Request(authOrigin + '/api/auth' + path, {
+        method: body === undefined ? 'GET' : 'POST',
+        headers: {
+          Origin: authOrigin,
+          'Content-Type': 'application/json',
+          'CF-Connecting-IP': ip,
+          Cookie: cookie,
+          ...extra
+        },
+        body: body === undefined ? undefined : JSON.stringify(body)
+      })
+    )
+  }
+  return { auth, request, sent, settings, db }
+}
+
+function mergeCookies(response: Response, prior = '') {
+  const values = new Map(
+    prior
+      .split('; ')
+      .filter(Boolean)
+      .map((part) => {
+        const index = part.indexOf('=')
+        return [part.slice(0, index), part.slice(index + 1)]
+      })
+  )
+  for (const value of response.headers.getSetCookie()) {
+    const pair = value.split(';')[0]
+    const index = pair.indexOf('=')
+    values.set(pair.slice(0, index), pair.slice(index + 1))
+  }
+  return [...values].map(([key, value]) => key + '=' + value).join('; ')
+}
+
+async function signInFixture(
+  fixture: Awaited<ReturnType<typeof authFixture>>,
+  email = 'admin@example.com'
+) {
+  const sent = await fixture.request('/email-otp/send-verification-otp', {
+    email,
+    type: 'sign-in'
+  })
+  assert.equal(sent.status, 200, await sent.clone().text())
+  const response = await fixture.request('/sign-in/email-otp', {
+    email,
+    otp: fixture.sent.get(email)
+  })
+  assert.equal(response.status, 200, await response.clone().text())
+  return {
+    response,
+    cookie: mergeCookies(response),
+    user: (await response.clone().json()).user as {
+      id: string
+      email: string
+      emailVerified: boolean
+    }
+  }
+}
+
+test('email-code sign-in is allowlisted, hashed, single-use, and authorizes the real admin API', async () => {
+  const fixture = await authFixture()
+  const outsider = await fixture.request('/email-otp/send-verification-otp', {
+    email: 'outsider@example.com',
+    type: 'sign-in'
+  })
+  assert.equal(outsider.status, 200)
+  assert.deepEqual(await outsider.json(), { success: true })
+  assert.equal(fixture.sent.size, 0)
+  assert.equal((await owner`SELECT id FROM auth_verification`).length, 0)
+  const sent = await fixture.request('/email-otp/send-verification-otp', {
+    email: 'ADMIN@example.com',
+    type: 'sign-in'
+  })
+  assert.equal(sent.status, 200)
+  const otp = fixture.sent.get('admin@example.com')!
+  assert.match(otp, /^\d{6}$/)
+  const [stored] = await owner`SELECT value FROM auth_verification`
+  assert.match(stored.value, /^[a-f0-9]{64}:0$/)
+  assert.notEqual(stored.value.split(':')[0], otp, 'Raw OTP was persisted')
+  const wrong = otp === '000000' ? '111111' : '000000'
+  assert.equal(
+    (
+      await fixture.request('/sign-in/email-otp', {
+        email: 'admin@example.com',
+        otp: wrong
+      })
+    ).status,
+    400
+  )
+  const signedIn = await fixture.request('/sign-in/email-otp', {
+    email: 'admin@example.com',
+    otp
+  })
+  assert.equal(signedIn.status, 200, await signedIn.clone().text())
+  assert.equal((await signedIn.clone().json()).user.emailVerified, true)
+  const cookies = signedIn.headers.getSetCookie().join(';')
+  assert.match(cookies, /HttpOnly/i)
+  assert.match(cookies, /Secure/i)
+  assert.match(cookies, /SameSite=Lax/i)
+  assert.ok(
+    !/Domain=/i.test(cookies),
+    'Session cookie escaped the app hostname'
+  )
+  const cookie = mergeCookies(signedIn)
+  const me = await application.fetch(
+    new Request(authOrigin + '/api/trpc/me', { headers: { Cookie: cookie } })
+  )
+  assert.equal(me.status, 200)
+  assert.equal((await me.json()).result.data.isAdmin, true)
+  const [idea] =
+    await owner`INSERT INTO suggestions(title, description) VALUES ('Admin mutation', 'Disposable') RETURNING id`
+  const update = (origin: string) =>
+    application.fetch(
+      new Request(authOrigin + '/api/trpc/suggestions.updateStatus', {
+        method: 'POST',
+        headers: {
+          Cookie: cookie,
+          Origin: origin,
+          'Sec-Fetch-Site': 'same-site',
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ id: idea.id, status: 'reviewed' })
+      })
+    )
+  assert.equal((await update('https://sibling.auth.test')).status, 403)
+  assert.equal((await update(authOrigin)).status, 200)
+  const [updated] =
+    await owner`SELECT status FROM suggestions WHERE id = ${idea.id}`
+  assert.equal(updated.status, 'reviewed')
+  await owner`DELETE FROM suggestions WHERE id = ${idea.id}`
+  assert.equal(
+    (
+      await application.fetch(
+        new Request(authOrigin + '/api/trpc/suggestions.list?input=%7B%7D', {
+          headers: { Cookie: cookie }
+        })
+      )
+    ).status,
+    200
+  )
+  assert.equal(
+    (
+      await fixture.request('/sign-in/email-otp', {
+        email: 'admin@example.com',
+        otp
+      })
+    ).status,
+    400
+  )
+  assert.equal((await fixture.request('/sign-out', {}, cookie)).status, 200)
+  assert.equal(
+    await (await fixture.request('/get-session', undefined, cookie)).json(),
+    null
+  )
+})
+
+test('OTP expiry, attempt limits and cross-site protections reject invalid access', async () => {
+  const fixture = await authFixture()
+  const crossSite = await fixture.request(
+    '/email-otp/send-verification-otp',
+    { email: 'admin@example.com', type: 'sign-in' },
+    '',
+    { Origin: 'https://evil.example', 'Sec-Fetch-Site': 'cross-site' }
+  )
+  assert.equal(crossSite.status, 403)
+  assert.equal(fixture.sent.size, 0)
+  assert.equal((await owner`SELECT key FROM auth_email_limit`).length, 0)
+  await fixture.request('/email-otp/send-verification-otp', {
+    email: 'admin@example.com',
+    type: 'sign-in'
+  })
+  const otp = fixture.sent.get('admin@example.com')!
+  const wrong = otp === '000000' ? '111111' : '000000'
+  for (let attempt = 0; attempt < 5; attempt++)
+    assert.equal(
+      (
+        await fixture.request('/sign-in/email-otp', {
+          email: 'admin@example.com',
+          otp: wrong
+        })
+      ).status,
+      400
+    )
+  const exhausted = await fixture.request('/sign-in/email-otp', {
+    email: 'admin@example.com',
+    otp
+  })
+  assert.equal(exhausted.status, 403)
+  assert.equal((await exhausted.json()).code, 'TOO_MANY_ATTEMPTS')
+  assert.equal(
+    (
+      await fixture.request('/email-otp/send-verification-otp', {
+        email: 'second@example.com',
+        type: 'sign-in'
+      })
+    ).status,
+    200
+  )
+  await owner`UPDATE auth_verification SET expires_at = now() - interval '1 second'`
+  assert.equal(
+    (
+      await fixture.request('/sign-in/email-otp', {
+        email: 'second@example.com',
+        otp: fixture.sent.get('second@example.com')
+      })
+    ).status,
+    400
+  )
+  assert.equal((await owner`SELECT id FROM auth_user`).length, 0)
+})
+
+test('concurrent resends preserve the usable code and cannot exceed the app email budget', async () => {
+  const fixture = await authFixture(1)
+  const responses = await Promise.all(
+    Array.from({ length: 4 }, () =>
+      fixture.request('/email-otp/send-verification-otp', {
+        email: 'admin@example.com',
+        type: 'sign-in'
+      })
+    )
+  )
+  assert.equal(
+    responses.filter((response) => response.status === 200).length,
+    1
+  )
+  assert.equal(
+    responses.filter((response) => response.status === 429).length,
+    3
+  )
+  assert.equal(fixture.sent.size, 1)
+  const [global] =
+    await owner`SELECT count FROM auth_email_limit WHERE key = 'global:day'`
+  assert.equal(global.count, 1)
+  // A different recipient still shares the same app-wide budget.
+  assert.equal(
+    (
+      await fixture.request('/email-otp/send-verification-otp', {
+        email: 'second@example.com',
+        type: 'sign-in'
+      })
+    ).status,
+    429
+  )
+  assert.equal(
+    (
+      await fixture.request('/sign-in/email-otp', {
+        email: 'admin@example.com',
+        otp: fixture.sent.get('admin@example.com')
+      })
+    ).status,
+    200
+  )
+})
+
+test('rate limits persist across independent auth instances', async () => {
+  const fixture = await authFixture()
+  const extra = { 'CF-Connecting-IP': '203.0.113.200' }
+  for (let index = 0; index < 3; index++)
+    assert.equal(
+      (
+        await fixture.request(
+          '/email-otp/send-verification-otp',
+          { email: 'outsider@example.com', type: 'sign-in' },
+          '',
+          extra
+        )
+      ).status,
+      200
+    )
+  const { createSuggestionsAuth } = await import('../src/server/auth-factory')
+  const restarted = createSuggestionsAuth(
+    fixture.db,
+    fixture.settings,
+    async () => {
+      throw new Error('Must not send')
+    }
+  )
+  const response = await restarted.handler(
+    new Request(authOrigin + '/api/auth/email-otp/send-verification-otp', {
+      method: 'POST',
+      headers: {
+        Origin: authOrigin,
+        'Content-Type': 'application/json',
+        ...extra
+      },
+      body: JSON.stringify({ email: 'outsider@example.com', type: 'sign-in' })
+    })
+  )
+  assert.equal(response.status, 429)
+  assert.ok((await owner`SELECT id FROM auth_rate_limit`).length > 0)
+})
+
+test('a permitted resend rotates the code and cannot revive older verification records', async () => {
+  const fixture = await authFixture()
+  const send = () =>
+    fixture.request('/email-otp/send-verification-otp', {
+      email: 'admin@example.com',
+      type: 'sign-in'
+    })
+  assert.equal((await send()).status, 200)
+  const old = fixture.sent.get('admin@example.com')!
+  await owner`UPDATE auth_email_limit SET window_started_at = now() - interval '61 seconds' WHERE key LIKE '%:minute'`
+  assert.equal((await send()).status, 200)
+  const fresh = fixture.sent.get('admin@example.com')!
+  if (old !== fresh)
+    assert.equal(
+      (
+        await fixture.request('/sign-in/email-otp', {
+          email: 'admin@example.com',
+          otp: old
+        })
+      ).status,
+      400
+    )
+  assert.equal(
+    (
+      await fixture.request('/sign-in/email-otp', {
+        email: 'admin@example.com',
+        otp: fresh
+      })
+    ).status,
+    200
+  )
+  assert.equal(
+    (
+      await fixture.request('/sign-in/email-otp', {
+        email: 'admin@example.com',
+        otp: old
+      })
+    ).status,
+    400
+  )
+  assert.equal((await owner`SELECT id FROM auth_verification`).length, 0)
+})
+
+test('unverified or removed admin emails cannot access data or enroll passkeys', async () => {
+  const fixture = await authFixture()
+  const { cookie, user } = await signInFixture(fixture)
+  await owner`UPDATE auth_user SET email_verified = false WHERE id = ${user.id}`
+  const me = await application.fetch(
+    new Request(authOrigin + '/api/trpc/me', { headers: { Cookie: cookie } })
+  )
+  assert.equal((await me.json()).result.data.isAdmin, false)
+  assert.equal(
+    (
+      await application.fetch(
+        new Request(authOrigin + '/api/trpc/suggestions.stats', {
+          headers: { Cookie: cookie }
+        })
+      )
+    ).status,
+    403
+  )
+  assert.equal(
+    (
+      await fixture.request(
+        '/passkey/generate-register-options',
+        undefined,
+        cookie
+      )
+    ).status,
+    401
+  )
+  await owner`UPDATE auth_user SET email_verified = true, email = 'outsider@example.com' WHERE id = ${user.id}`
+  assert.equal(
+    (
+      await fixture.request(
+        '/passkey/generate-register-options',
+        undefined,
+        cookie
+      )
+    ).status,
+    401
+  )
+  assert.equal(
+    (await fixture.request('/passkey/generate-register-options')).status,
+    401
+  )
+})
+
+test('passkeys enroll after verified sign-in and enforce RP, origin, verification and challenge replay', async () => {
+  const fixture = await authFixture()
+  const { cookie, user } = await signInFixture(fixture)
+  const authenticator = virtualAuthenticator(authOrigin)
+  const registration = await fixture.request(
+    '/passkey/generate-register-options',
+    undefined,
+    cookie
+  )
+  assert.equal(registration.status, 200, await registration.clone().text())
+  const options = await registration.json()
+  assert.equal(options.rp.id, new URL(authOrigin).hostname)
+  assert.equal(options.authenticatorSelection.userVerification, 'required')
+  const registered = await fixture.request(
+    '/passkey/verify-registration',
+    {
+      response: authenticator.registration(options.challenge),
+      name: 'Disposable authenticator'
+    },
+    mergeCookies(registration, cookie)
+  )
+  assert.equal(registered.status, 200, await registered.clone().text())
+  const [passkey] =
+    await owner`SELECT id, user_id FROM auth_passkey WHERE credential_id = ${authenticator.id}`
+  assert.equal(passkey.user_id, user.id)
+  await fixture.request('/sign-out', {}, cookie)
+  const challenge = await fixture.request(
+    '/passkey/generate-authenticate-options'
+  )
+  const challengeData = await challenge.json()
+  const assertion = authenticator.assertion(challengeData.challenge, user.id)
+  const signedIn = await fixture.request(
+    '/passkey/verify-authentication',
+    { response: assertion },
+    mergeCookies(challenge)
+  )
+  assert.equal(signedIn.status, 200, await signedIn.clone().text())
+  assert.equal((await signedIn.clone().json()).user.id, user.id)
+  assert.ok(mergeCookies(signedIn).includes('session_token='))
+  assert.equal(
+    (
+      await fixture.request(
+        '/passkey/verify-authentication',
+        { response: assertion },
+        mergeCookies(challenge)
+      )
+    ).status,
+    400
+  )
+  for (const invalid of [
+    { origin: 'https://evil.example' },
+    { hostname: 'evil.example' },
+    { verified: false }
+  ]) {
+    const next = await fixture.request('/passkey/generate-authenticate-options')
+    const data = await next.json()
+    const rejected = await fixture.request(
+      '/passkey/verify-authentication',
+      {
+        response: authenticator.assertion(data.challenge, user.id, {
+          ...invalid,
+          counter: 2
+        })
+      },
+      mergeCookies(next)
+    )
+    assert.ok(rejected.status >= 400, 'Invalid WebAuthn assertion was accepted')
+  }
+  const signedCookie = mergeCookies(signedIn)
+  assert.equal(
+    (
+      await fixture.request(
+        '/passkey/delete-passkey',
+        { id: passkey.id },
+        signedCookie
+      )
+    ).status,
+    200
+  )
+  assert.equal((await owner`SELECT id FROM auth_passkey`).length, 0)
+})
+
+test('mail failure does not block anonymous submissions; unused auth surfaces stay disabled', async () => {
+  const fixture = await authFixture(40, true)
+  // Better Auth deliberately keeps the send response generic even if the
+  // delivery callback fails. This must not affect public submissions.
+  assert.equal(
+    (
+      await fixture.request('/email-otp/send-verification-otp', {
+        email: 'admin@example.com',
+        type: 'sign-in'
+      })
+    ).status,
+    200
+  )
+  const page = await application.fetch(new Request(authOrigin + '/'))
+  assert.equal(page.status, 200)
+  assert.match(await page.text(), /Magical Ideas/)
+  const response = await application.fetch(
+    new Request(authOrigin + '/api/trpc/suggestions.create', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Cookie: 'suggestions-auth.session_token=invalid'
+      },
+      body: JSON.stringify({
+        title: 'Mail outage',
+        description: 'Public submissions remain available'
+      })
+    })
+  )
+  assert.equal(response.status, 200, await response.clone().text())
+  const id = (await response.json()).result.data.id
+  const [stored] = await owner`SELECT title FROM suggestions WHERE id = ${id}`
+  assert.equal(stored.title, 'Mail outage')
+  await owner`DELETE FROM suggestions WHERE id = ${id}`
+  for (const path of [
+    '/email-otp/get-verification-otp',
+    '/sign-up/email',
+    '/request-password-reset'
+  ])
+    assert.equal(
+      (await application.fetch(new Request(authOrigin + '/api/auth' + path)))
+        .status,
+      404
+    )
+  assert.equal((await health()).status, 200)
+})
