@@ -8,6 +8,8 @@ import {
   uniqueIndex
 } from 'drizzle-orm/pg-core'
 
+export * from './auth-schema'
+
 export const suggestions = pgTable(
   'suggestions',
   {

@@ -56,6 +56,61 @@ admin identity check, suggestion list and statistics all passed, showing the
 one imported rejected suggestion. Evidence is recorded in
 `/Users/kyle/platform/verification/suggestions-admin-acceptance.json`.
 
+## Better Auth rollout and Clerk rollback
+
+`AUTH_PROVIDER` selects exactly one authentication provider for both the server
+and the rendered client. It defaults to `clerk` so the additive release can be
+deployed before changing the production sign-in flow. Runtime provider changes
+require recreating the app container; do not try to hot-swap its process environment.
+
+The owner migration adds `auth_user`, `auth_session`, `auth_account`,
+`auth_verification`, `auth_passkey`, `auth_rate_limit` and `auth_email_limit`.
+It does not rewrite suggestions or attach anonymous submissions to new user IDs.
+The runtime still uses its existing four-connection pool and restricted role.
+
+Prepare these settings in the host's protected `.env`, retaining the Clerk keys:
+
+```dotenv
+AUTH_PROVIDER=clerk
+BETTER_AUTH_URL=https://suggestions.kylescudder.co.uk
+BETTER_AUTH_SECRET=<stable, cryptographically random app-specific secret>
+BREVO_API_KEY=<Suggestions transactional API key>
+AUTH_EMAIL_FROM=suggestions@kylescudder.co.uk
+AUTH_EMAIL_DAILY_LIMIT=40
+```
+
+Generate a secret of at least 32 characters and keep it stable across releases.
+Keep it and the sending API key out of Git, image layers and CI. `ADMIN_EMAILS`
+remains the server-side allowlist. Codes can create accounts only for allowlisted
+emails; each admin must prove email ownership again instead of trusting a
+client-provided or imported Clerk user ID. The passkey RP ID is the exact
+hostname in `BETTER_AUTH_URL`, with that same trusted HTTPS origin.
+
+First deploy the image through the central service. After owner migrations and
+the existing acceptance checks pass, set `AUTH_PROVIDER=better-auth` and recreate
+only the `suggestions` service using the retained current image. Verify the
+public form and assets, anonymous submission, signed-out admin rejection,
+email-code sign-in, the authenticated dashboard, and passkey enrollment/sign-in.
+Email codes are six digits, valid once for ten minutes, with five attempts.
+The database stores a keyed hash of each code. Persistent limits include a
+60-second recipient resend cooldown, five sends per recipient/hour, an app-wide
+delivery-attempt budget (default 40 per rolling 24 hours), and per-IP auth limits.
+Mail failures count toward the attempt budget. Health and public submissions
+do not call the mail provider.
+
+To roll back, set `AUTH_PROVIDER=clerk` and recreate only the app service with
+the same image. Keep Clerk keys, its production app and DNS available. The
+retained previous image is another rollback option through the central service.
+Leave the additive auth tables in place; never restore an older database just
+to change providers, because that would discard newer anonymous submissions.
+
+Brevo's free plan automatically adds a `List-Unsubscribe` header even to these
+transactional emails, which can produce a mailing-list banner in email clients.
+Removing it or replacing it with `List-Help` requires Enterprise/support approval;
+do not promise that app styling can hide it. Respect suppression/unsubscribe
+state, and retain email-code recovery alongside passkeys. See
+[Brevo's header explanation](https://help.brevo.com/hc/en-us/articles/19100260472850-FAQs-About-list-unsubscribe-and-list-help-headers-in-emails).
+
 ## Automatic releases
 
 Every push to `main` runs `.github/workflows/release.yml`. CI checks all

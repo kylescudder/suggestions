@@ -49,11 +49,22 @@ export function readDatabaseEnv(runtimeEnv: RuntimeEnv = process.env) {
 }
 
 export function readEnv(runtimeEnv: RuntimeEnv = process.env) {
-  return createEnv({
+  const env = createEnv({
     server: {
       ...databaseSchema,
-      CLERK_PUBLISHABLE_KEY: z.string().min(1),
-      CLERK_SECRET_KEY: z.string().min(1),
+      AUTH_PROVIDER: z.enum(['clerk', 'better-auth']).default('clerk'),
+      CLERK_PUBLISHABLE_KEY: z.string().min(1).optional(),
+      CLERK_SECRET_KEY: z.string().min(1).optional(),
+      BETTER_AUTH_URL: origin.optional(),
+      BETTER_AUTH_SECRET: z.string().min(32).optional(),
+      BREVO_API_KEY: z.string().min(1).optional(),
+      AUTH_EMAIL_FROM: z.email().optional(),
+      AUTH_EMAIL_DAILY_LIMIT: z.coerce
+        .number()
+        .int()
+        .min(1)
+        .max(300)
+        .default(40),
       CLERK_AUTHORIZED_PARTIES: z
         .string()
         .optional()
@@ -83,4 +94,23 @@ export function readEnv(runtimeEnv: RuntimeEnv = process.env) {
     runtimeEnv,
     ...validation
   })
+  const required =
+    env.AUTH_PROVIDER === 'clerk'
+      ? (['CLERK_PUBLISHABLE_KEY', 'CLERK_SECRET_KEY'] as const)
+      : ([
+          'BETTER_AUTH_URL',
+          'BETTER_AUTH_SECRET',
+          'BREVO_API_KEY',
+          'AUTH_EMAIL_FROM'
+        ] as const)
+  const missing = required.filter((key) => !env[key])
+  if (missing.length)
+    throw new Error('Invalid environment variables: ' + missing.join(', '))
+  if (
+    env.NODE_ENV === 'production' &&
+    env.AUTH_PROVIDER === 'better-auth' &&
+    !env.BETTER_AUTH_URL?.startsWith('https://')
+  )
+    throw new Error('Invalid environment variables: BETTER_AUTH_URL')
+  return env
 }

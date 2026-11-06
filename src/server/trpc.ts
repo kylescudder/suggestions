@@ -12,7 +12,7 @@ export const STATUSES = [
 ] as const
 
 export type Context = {
-  // From Clerk's verified server session, never from request input.
+  // From the selected provider's verified server session, never request input.
   userId: string | null
   isAdmin: (userId: string) => Promise<boolean>
 }

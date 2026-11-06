@@ -1,18 +1,90 @@
 import { SignIn, UserButton, useAuth } from '@clerk/tanstack-react-start'
-import { createFileRoute } from '@tanstack/react-router'
+import { createFileRoute, useLoaderData } from '@tanstack/react-router'
+import { useQueryClient } from '@tanstack/react-query'
 import { Toaster } from 'sonner'
 import { MagicalSuggestionForm } from '@/components/MagicalSuggestionForm'
 import { AdminDashboard } from '@/components/AdminDashboard'
 import { useState } from 'react'
 import { Shield, Sparkles } from 'lucide-react'
+import type { ReactNode } from 'react'
+import { AdminSignIn } from '@/components/AdminSignIn'
+import { PasskeySettings } from '@/components/PasskeySettings'
+import { authClient } from '@/lib/auth-client'
 
 export const Route = createFileRoute('/')({
   component: Home
 })
 
 function Home() {
-  const [showAdmin, setShowAdmin] = useState(false)
+  const { provider } = useLoaderData({ from: '__root__' })
+  return provider === 'clerk' ? <ClerkHome /> : <BetterAuthHome />
+}
+
+function ClerkHome() {
   const { isSignedIn } = useAuth()
+  return (
+    <SuggestionPage
+      signedIn={!!isSignedIn}
+      account={<UserButton />}
+      signIn={<SignIn routing='hash' />}
+    />
+  )
+}
+
+function BetterAuthHome() {
+  const { data: session, isPending } = authClient.useSession()
+  const queryClient = useQueryClient()
+  const [error, setError] = useState('')
+  async function signOut() {
+    setError('')
+    try {
+      const result = await authClient.signOut()
+      if (result.error) setError('Unable to sign out. Please try again.')
+      else queryClient.clear()
+    } catch {
+      setError('Unable to sign out. Please try again.')
+    }
+  }
+  return (
+    <SuggestionPage
+      signedIn={!!session}
+      account={
+        <button
+          onClick={() => void signOut()}
+          className='rounded-lg border border-white/30 px-3 py-2 text-sm text-white hover:bg-white/10'
+        >
+          Sign out
+        </button>
+      }
+      signIn={
+        isPending ? (
+          <p role='status' className='py-12 text-center text-purple-100'>
+            Checking sign-in…
+          </p>
+        ) : (
+          <AdminSignIn onSignedIn={() => queryClient.clear()} />
+        )
+      }
+      settings={session?.user.emailVerified ? <PasskeySettings /> : undefined}
+      error={error}
+    />
+  )
+}
+
+function SuggestionPage({
+  signedIn,
+  account,
+  signIn,
+  settings,
+  error
+}: {
+  signedIn: boolean
+  account: ReactNode
+  signIn: ReactNode
+  settings?: ReactNode
+  error?: string
+}) {
+  const [showAdmin, setShowAdmin] = useState(false)
 
   return (
     <div className='relative min-h-screen overflow-hidden bg-linear-to-br from-purple-900 via-blue-900 to-indigo-900'>
@@ -27,14 +99,14 @@ function Home() {
       </div>
 
       <header className='relative z-10 border-b border-white/20 bg-white/10 backdrop-blur-md'>
-        <div className='mx-auto flex h-16 max-w-7xl items-center justify-between px-4'>
+        <div className='mx-auto flex min-h-16 max-w-7xl flex-wrap items-center justify-between gap-3 px-4 py-3'>
           <h1 className='flex items-center gap-2 text-2xl font-bold text-white'>
             <Sparkles className='h-6 w-6' />
             Magical Ideas
           </h1>
 
           <div className='flex items-center gap-4'>
-            {isSignedIn ? (
+            {signedIn ? (
               <>
                 <button
                   onClick={() => setShowAdmin(!showAdmin)}
@@ -42,7 +114,7 @@ function Home() {
                 >
                   {showAdmin ? 'Public View' : 'Admin Dashboard'}
                 </button>
-                <UserButton />
+                {account}
               </>
             ) : (
               <button
@@ -57,17 +129,23 @@ function Home() {
         </div>
       </header>
 
-      <main className='relative z-10 flex-1 p-8'>
-        {isSignedIn ? (
+      <main className='relative z-10 flex-1 px-4 py-8 sm:px-8'>
+        {error && (
+          <p role='alert' className='mb-4 text-center text-red-200'>
+            {error}
+          </p>
+        )}
+        {signedIn ? (
           showAdmin ? (
-            <AdminDashboard />
+            <>
+              <AdminDashboard />
+              {settings}
+            </>
           ) : (
             <MagicalSuggestionForm />
           )
         ) : showAdmin ? (
-          <div className='mt-20 flex justify-center'>
-            <SignIn routing='hash' />
-          </div>
+          signIn
         ) : (
           <MagicalSuggestionForm />
         )}

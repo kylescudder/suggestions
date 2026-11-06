@@ -7,8 +7,10 @@ import {
 } from '@tanstack/react-router'
 import type { ReactNode } from 'react'
 import styles from '@/styles.css?url'
+import { getAuthConfig } from '@/lib/auth-config'
 
 export const Route = createRootRoute({
+  loader: () => getAuthConfig(),
   head: () => ({
     meta: [
       { charSet: 'UTF-8' },
@@ -27,6 +29,8 @@ export const Route = createRootRoute({
 })
 
 function RootComponent() {
+  const { provider } = Route.useLoaderData()
+  if (provider === 'better-auth') return <Outlet />
   return (
     <ClerkProvider>
       <Outlet />
