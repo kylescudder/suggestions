@@ -26,7 +26,7 @@ function ProfilePage() {
         </Link>
         <h1 className='mt-6 mb-8 text-3xl font-bold'>Your profile</h1>
         {provider === 'better-auth' ? (
-          <BetterAuthUIProvider>
+          <BetterAuthUIProvider redirectTo='/profile'>
             <BetterAuthProfile />
           </BetterAuthUIProvider>
         ) : (
