@@ -9,9 +9,10 @@ import { useQueryClient } from '@tanstack/react-query'
 import { useEffect, useState } from 'react'
 import { authClient } from '@/lib/auth-client'
 import { AdminSignIn } from '@/components/AdminSignIn'
-import { ProfileEditor } from '@/components/ProfileEditor'
-import { PasskeySettings } from '@/components/PasskeySettings'
+import { UserProfile as BetterAuthUserProfile } from '@/components/auth/settings/account/user-profile'
+import { Passkeys } from '@/components/auth/passkey/passkeys'
 import { clearPendingSignIn } from '@/lib/pending-sign-in'
+import { BetterAuthUIProvider } from '@/components/BetterAuthUIProvider'
 
 export const Route = createFileRoute('/profile')({ component: ProfilePage })
 
@@ -24,7 +25,13 @@ function ProfilePage() {
           Back to Suggestions
         </Link>
         <h1 className='mt-6 mb-8 text-3xl font-bold'>Your profile</h1>
-        {provider === 'better-auth' ? <BetterAuthProfile /> : <ClerkProfile />}
+        {provider === 'better-auth' ? (
+          <BetterAuthUIProvider>
+            <BetterAuthProfile />
+          </BetterAuthUIProvider>
+        ) : (
+          <ClerkProfile />
+        )}
       </main>
     </div>
   )
@@ -36,7 +43,7 @@ function ClerkProfile() {
 }
 
 function BetterAuthProfile() {
-  const { data: session, isPending, refetch } = authClient.useSession()
+  const { data: session, isPending } = authClient.useSession()
   const queryClient = useQueryClient()
   const navigate = useNavigate()
   const [error, setError] = useState('')
@@ -70,13 +77,11 @@ function BetterAuthProfile() {
   }
   return (
     <>
-      <ProfileEditor
-        userId={session.user.id}
-        onUpdated={async () => {
-          await refetch()
-        }}
-      />
-      <PasskeySettings />
+      <BetterAuthUserProfile key={session.user.id} />
+      <Passkeys className='mt-8' />
+      <p className='mt-4 text-sm text-purple-100'>
+        Email codes remain available for recovery.
+      </p>
       {error && (
         <p role='alert' className='mt-6 text-red-100'>
           {error}

@@ -583,61 +583,51 @@ test('email-code sign-in is allowlisted, hashed, single-use, and authorizes the 
   )
 })
 
-test('profile edits persist only for the verified session owner and cannot change identity or permissions', async () => {
+test('native profile updates persist for the verified owner without changing identity or permissions', async () => {
   const fixture = await authFixture()
   const { cookie, user } = await signInFixture(fixture)
-  const { cookie: otherCookie, user: other } = await signInFixture(
-    fixture,
-    'second@example.com'
-  )
+  const other = await signInFixture(fixture, 'second@example.com')
   const { createProfileHandler } = await import('../src/server/profile-handler')
   const handler = createProfileHandler(fixture.db, {
     origin: authOrigin,
     adminEmails: fixture.settings.adminEmails,
     getSession: (headers) => fixture.auth.api.getSession({ headers })
   })
-  const request = (
-    body?: unknown,
+  const read = (session = cookie) =>
+    handler(
+      new Request(authOrigin + '/api/profile', { headers: { Cookie: session } })
+    )
+  const update = (
+    body: unknown,
     extra: Record<string, string> = {},
     session = cookie
-  ) =>
-    handler(
-      new Request(authOrigin + '/api/profile', {
-        method: body === undefined ? 'GET' : 'PATCH',
-        headers: {
-          Origin: authOrigin,
-          Cookie: session,
-          'Content-Type': 'application/json',
-          ...extra
-        },
-        body: body === undefined ? undefined : JSON.stringify(body)
-      })
-    )
-  assert.equal((await request(undefined, {}, '')).status, 401)
+  ) => fixture.request('/update-user', body, session, extra)
+  assert.equal((await update({ name: 'New' }, {}, '')).status, 401)
   const details = {
     name: '  Display Name  ',
     givenName: 'Given',
     familyName: 'Family'
   }
   assert.equal(
-    (await request(details, { Origin: 'https://sibling.auth.test' })).status,
+    (await update(details, { Origin: 'https://sibling.auth.test' })).status,
     403
   )
-  assert.equal((await request(details, { Origin: '' })).status, 403)
+  assert.equal((await update(details, { Origin: '' })).status, 403)
   for (const field of [
     { email: 'attacker@example.com' },
     { emailVerified: true },
-    { userId: other.id },
+    { userId: other.user.id },
+    { role: 'admin' },
     { image: 'https://example.com/track' }
   ])
-    assert.equal((await request({ ...details, ...field })).status, 400)
-  assert.equal((await request({ ...details, name: '' })).status, 400)
+    assert.equal((await update({ ...details, ...field })).status, 400)
+  assert.equal((await update({ ...details, name: '' })).status, 400)
   assert.equal(
-    (await request({ ...details, name: 'x'.repeat(121) })).status,
+    (await update({ ...details, name: 'x'.repeat(121) })).status,
     400
   )
-  const saved = await request(details)
-  assert.equal(saved.status, 200)
+  assert.equal((await update(details)).status, 200)
+  const saved = await read()
   assert.equal(saved.headers.get('Cache-Control'), 'no-store')
   assert.deepEqual(await saved.json(), {
     name: 'Display Name',
@@ -648,31 +638,47 @@ test('profile edits persist only for the verified session owner and cannot chang
     image: null
   })
   const [stored] =
-    await owner`SELECT u.name, u.email, u.email_verified, p.given_name, p.family_name FROM auth_user u JOIN user_profile p ON p.user_id=u.id WHERE u.id=${user.id}`
+    await owner`SELECT name,email,email_verified,given_name,family_name FROM auth_user WHERE id=${user.id}`
   assert.equal(stored.name, 'Display Name')
   assert.equal(stored.email, user.email)
   assert.equal(stored.email_verified, true)
-  const different = await (await request(undefined, {}, otherCookie)).json()
-  assert.equal(different.email, other.email)
+  const different = await (await read(other.cookie)).json()
+  assert.equal(different.email, other.user.email)
   assert.equal(different.givenName, '')
-  // A new handler/session read sees the persisted profile and canonical auth name.
-  assert.equal((await (await request()).json()).name, 'Display Name')
+  assert.equal((await update({ givenName: null })).status, 200)
+  assert.equal((await (await read()).json()).givenName, '')
+  assert.equal((await (await read()).json()).familyName, 'Family')
   const routed = await application.fetch(
-    new Request(authOrigin + '/api/profile', { headers: { Cookie: cookie } })
+    new Request(authOrigin + '/api/auth/update-user', {
+      method: 'POST',
+      headers: {
+        Cookie: cookie,
+        Origin: authOrigin,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ name: 'Routed Name' })
+    })
   )
-  assert.equal(routed.status, 200)
-  assert.equal((await routed.json()).name, 'Display Name')
+  assert.equal(routed.status, 200, await routed.clone().text())
   const session = await fixture.auth.api.getSession({
     headers: new Headers({ Cookie: cookie })
   })
   assert.equal(
     (session!.user as typeof user & { name: string }).name,
-    'Display Name'
+    'Routed Name'
   )
+  const profileSessionUser = session!.user as typeof user & {
+    givenName: string
+    familyName: string
+  }
+  assert.equal(profileSessionUser.givenName, '')
+  assert.equal(profileSessionUser.familyName, 'Family')
   await owner`UPDATE auth_user SET email_verified=false WHERE id=${user.id}`
-  assert.equal((await request()).status, 403)
-  await owner`UPDATE auth_user SET email_verified=true, email='removed@example.com' WHERE id=${user.id}`
-  assert.equal((await request()).status, 403)
+  assert.equal((await read()).status, 403)
+  assert.equal((await update({ name: 'No' })).status, 401)
+  await owner`UPDATE auth_user SET email_verified=true,email='removed@example.com' WHERE id=${user.id}`
+  assert.equal((await read()).status, 403)
+  assert.equal((await update({ name: 'No' })).status, 401)
 })
 
 test('profile photos are bounded, re-encoded, private to their owner and removable', async () => {
@@ -738,6 +744,25 @@ test('profile photos are bounded, re-encoded, private to their owner and removab
   assert.equal(first.status, 200, await first.clone().text())
   const initial = await first.json()
   assert.match(initial.image, /^\/api\/profile\/avatar\?v=/)
+  assert.equal(
+    (await fixture.request('/update-user', { image: initial.image }, cookie))
+      .status,
+    200
+  )
+  assert.equal(
+    (
+      await fixture.request(
+        '/update-user',
+        { image: initial.image },
+        other.cookie
+      )
+    ).status,
+    400
+  )
+  assert.equal(
+    (await fixture.request('/update-user', { image: null }, cookie)).status,
+    400
+  )
   const picture = await request()
   assert.equal(picture.status, 200)
   assert.equal(picture.headers.get('Content-Type'), 'image/jpeg')
@@ -774,6 +799,10 @@ test('profile photos are bounded, re-encoded, private to their owner and removab
   )
   assert.equal(routed.status, 200, await routed.clone().text())
   assert.equal((await request('DELETE')).status, 200)
+  assert.equal(
+    (await fixture.request('/update-user', { image: null }, cookie)).status,
+    200
+  )
   assert.equal((await request()).status, 404)
   const [removed] = await owner`SELECT image FROM auth_user WHERE id=${user.id}`
   assert.equal(removed.image, null)

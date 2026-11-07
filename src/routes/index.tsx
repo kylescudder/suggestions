@@ -1,7 +1,6 @@
 import { SignIn, UserButton, useAuth } from '@clerk/tanstack-react-start'
 import { createFileRoute, Link, useLoaderData } from '@tanstack/react-router'
 import { useQueryClient } from '@tanstack/react-query'
-import { Toaster } from 'sonner'
 import { MagicalSuggestionForm } from '@/components/MagicalSuggestionForm'
 import { AdminDashboard } from '@/components/AdminDashboard'
 import { useEffect, useState } from 'react'
@@ -160,8 +159,6 @@ function SuggestionPage({
           <MagicalSuggestionForm />
         )}
       </main>
-
-      <Toaster />
     </div>
   )
 }

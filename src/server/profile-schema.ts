@@ -8,8 +8,6 @@ export const userProfile = pgTable('user_profile', {
   userId: text('user_id')
     .primaryKey()
     .references(() => authUser.id, { onDelete: 'cascade' }),
-  givenName: text('given_name').notNull().default(''),
-  familyName: text('family_name').notNull().default(''),
   avatar: binary('avatar'),
   avatarVersion: text('avatar_version'),
   updatedAt: timestamp('updated_at', { withTimezone: true })

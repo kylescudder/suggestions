@@ -1,5 +1,5 @@
 {
-  "id": "9cf6e24a-8461-49a9-b7b4-0feb7b99dd64",
+  "id": "3e12bd30-ebab-4ae7-b87b-e644666ae78a",
   "prevId": "8b9e8a7b-4bd8-43a7-9814-c9d8ec7f8979",
   "version": "7",
   "dialect": "postgresql",
@@ -458,6 +458,20 @@
           "primaryKey": false,
           "notNull": true
         },
+        "given_name": {
+          "name": "given_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "''"
+        },
+        "family_name": {
+          "name": "family_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "''"
+        },
         "email": {
           "name": "email",
           "type": "text",
@@ -684,20 +698,6 @@
           "type": "text",
           "primaryKey": true,
           "notNull": true
-        },
-        "given_name": {
-          "name": "given_name",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "''"
-        },
-        "family_name": {
-          "name": "family_name",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "''"
         },
         "avatar": {
           "name": "avatar",

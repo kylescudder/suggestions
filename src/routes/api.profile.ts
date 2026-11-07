@@ -4,8 +4,7 @@ import { handleProfileRequest } from '@/server/profile'
 export const Route = createFileRoute('/api/profile')({
   server: {
     handlers: {
-      GET: ({ request }) => handleProfileRequest(request),
-      PATCH: ({ request }) => handleProfileRequest(request)
+      GET: ({ request }) => handleProfileRequest(request)
     }
   }
 })

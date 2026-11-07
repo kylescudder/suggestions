@@ -121,30 +121,42 @@ state, and retain email-code recovery alongside passkeys. See
 
 ## Profile settings
 
-The Better Auth account link opens `/profile`, with an app-styled display name,
+The Better Auth account link opens `/profile`, using the official Better Auth UI
+shadcn `UserProfile` and `Passkeys` components. The page has a display name,
 optional first/last names, a read-only verified email, photo management and
-passkeys. Names and pictures are local to the signed-in account; email-code
-sign-in does not discover names or import a Clerk profile automatically.
-Clerk rollback uses its own existing profile component.
+passkeys. Registry components live in `src/components/auth` and `src/components/ui`;
+see `THIRD_PARTY_NOTICES.md` for provenance and local adaptations. Profile UI is
+loaded with its route, not on the initial public page. The existing email-code
+flow retains its mobile focus/reload recovery. Password, signup, email-change
+and unrelated account-management surfaces remain disabled. Reauthentication for
+passkey enrollment returns to the profile's existing email-code sign-in.
 
-Migration `0002_profile` adds only `user_profile`, linked to `auth_user` with
-delete cascade. First/last names and the processed avatar are app-owned; Better
-Auth's existing `name`/`image` fields stay synchronized for session/passkey use.
-No existing suggestions or identities are rewritten. Runtime CRUD uses the
+Names and pictures belong to the signed-in account. Email-code sign-in does not
+discover names or import a Clerk profile. Clerk rollback keeps its existing
+native profile component.
+
+The `0002_profile` migration adds first/last name columns with empty
+string defaults to `auth_user`, plus one `user_profile` table for a processed
+avatar. Existing identities and sessions are preserved. First/last names are
+registered as Better Auth additional fields, so the shadcn form reads them from
+its session and saves through `/api/auth/update-user`. That endpoint accepts only
+name fields or an already-established server-owned avatar value, requires a
+verified allowlisted session and exact app Origin, and rejects identity, email,
+verification, role and arbitrary image URL changes. Runtime CRUD uses the
 existing project role/default grants and four-connection application pool.
 
-`/api/profile` and `/api/profile/avatar` require a verified, allowlisted session
-and operate only on that session's user. Writes require the exact app Origin;
-email/verification/identity fields cannot be edited. Photos are private,
-`no-store`, and served only to their owner. Browser uploads accept JPEG/PNG/WebP
-up to 10 MB and prepare a 512-pixel square before sending. The server separately
+`GET /api/profile` and `/api/profile/avatar` are likewise scoped to the verified
+owner. Photos are private, `no-store`, and never fetched from remote URLs. The
+avatar upload/delete callbacks update protected storage first; native profile
+updates then confirm the resulting image value. Browser uploads accept
+JPEG/PNG/WebP up to 10 MB and prepare a 512-pixel square. The server separately
 caps input at 2 MB/4 megapixels, checks format signatures, decodes and re-encodes
-to a 256-pixel JPEG, stripping metadata. It never fetches a remote image URL.
-The small image is stored as Postgres `bytea`, covered by the existing encrypted
-project backup; no extra volume, service, credential or DNS changes are needed.
+to a 256-pixel JPEG with metadata removed. The small image is Postgres `bytea`,
+covered by existing encrypted backups. No extra volume, service, credential or
+DNS changes are needed.
 
-Keep this table on image/auth rollback. The previous release can ignore the
-additive profile data. Do not restore an old database just to roll back the UI.
+Keep the additive table and columns on image/auth rollback. The previous release
+can ignore profile data. Do not restore an old database just to roll back the UI.
 
 ## Automatic releases
 

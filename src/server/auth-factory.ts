@@ -1,4 +1,5 @@
 import { createHmac } from 'node:crypto'
+import { eq } from 'drizzle-orm'
 import { betterAuth } from 'better-auth'
 import {
   APIError,
@@ -12,6 +13,8 @@ import type { db } from './db'
 import * as schema from './auth-schema'
 import { reserveEmailDelivery } from './auth-email'
 import { isAllowedAdminEmail, isVerifiedAdmin } from './auth-policy'
+import { userProfile } from './profile-schema'
+import { profileUpdateSchema } from './profile-validation'
 
 export type AuthSettings = {
   baseURL: string
@@ -64,7 +67,13 @@ export function createSuggestionsAuth(
       cookieCache: { enabled: false }
     },
     emailAndPassword: { enabled: false },
-    user: { changeEmail: { enabled: false } },
+    user: {
+      changeEmail: { enabled: false },
+      additionalFields: {
+        givenName: { type: 'string', required: false, defaultValue: '' },
+        familyName: { type: 'string', required: false, defaultValue: '' }
+      }
+    },
     advanced: {
       cookiePrefix: 'suggestions-auth',
       useSecureCookies: origin.startsWith('https://'),
@@ -87,6 +96,39 @@ export function createSuggestionsAuth(
     },
     hooks: {
       before: createAuthMiddleware(async (ctx) => {
+        if (ctx.path === '/update-user') {
+          if (
+            ctx.headers?.get('origin') !== origin ||
+            ctx.headers?.get('sec-fetch-site') === 'cross-site'
+          )
+            throw new APIError('FORBIDDEN', {
+              message: 'Cross-site request refused'
+            })
+          const session = await getSessionFromCtx(ctx)
+          if (!isVerifiedAdmin(session?.user, settings.adminEmails))
+            throw new APIError('UNAUTHORIZED', {
+              message: 'Sign in with a verified admin email first'
+            })
+          const parsed = profileUpdateSchema.safeParse(ctx.body)
+          if (!parsed.success)
+            throw new APIError('BAD_REQUEST', {
+              message: 'Invalid profile update'
+            })
+          if (parsed.data.image !== undefined) {
+            const [photo] = await database
+              .select({ version: userProfile.avatarVersion })
+              .from(userProfile)
+              .where(eq(userProfile.userId, session!.user.id))
+            const expected = photo?.version
+              ? '/api/profile/avatar?v=' + photo.version
+              : null
+            if (parsed.data.image !== expected)
+              throw new APIError('BAD_REQUEST', {
+                message: 'Upload or remove your profile photo first'
+              })
+          }
+          Object.assign(ctx.body, parsed.data)
+        }
         if (ctx.path === '/email-otp/send-verification-otp') {
           const requestOrigin = ctx.headers?.get('origin')
           if (

@@ -1,7 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import { eq } from 'drizzle-orm'
 import sharp from 'sharp'
-import { z } from 'zod'
 import type { db } from './db'
 import { authUser } from './auth-schema'
 import { userProfile } from './profile-schema'
@@ -14,11 +13,6 @@ type Settings = {
   getSession: (headers: Headers) => Promise<{ user: Identity } | null>
 }
 
-const names = z.strictObject({
-  name: z.string().trim().min(1).max(120),
-  givenName: z.string().trim().max(100),
-  familyName: z.string().trim().max(100)
-})
 const privateHeaders = {
   'Cache-Control': 'no-store',
   'X-Content-Type-Options': 'nosniff',
@@ -66,8 +60,8 @@ export function createProfileHandler(database: typeof db, settings: Settings) {
         name: authUser.name,
         email: authUser.email,
         emailVerified: authUser.emailVerified,
-        givenName: userProfile.givenName,
-        familyName: userProfile.familyName,
+        givenName: authUser.givenName,
+        familyName: authUser.familyName,
         avatarVersion: userProfile.avatarVersion
       })
       .from(authUser)
@@ -117,41 +111,6 @@ export function createProfileHandler(database: typeof db, settings: Settings) {
             'Content-Security-Policy': "default-src 'none'; sandbox"
           }
         })
-      }
-      if (!avatarRequest && request.method === 'PATCH') {
-        if (
-          request.headers.get('content-type')?.split(';')[0] !==
-          'application/json'
-        )
-          throw new ProfileError(415, 'Send profile details as JSON.')
-        let value: unknown
-        try {
-          value = JSON.parse((await readBody(request, 4096)).toString('utf8'))
-        } catch (error) {
-          if (error instanceof ProfileError) throw error
-          throw new ProfileError(400, 'Profile details are invalid.')
-        }
-        const parsed = names.safeParse(value)
-        if (!parsed.success)
-          throw new ProfileError(
-            400,
-            'Use a display name of 1–120 characters and names of up to 100 characters.'
-          )
-        const { name, givenName, familyName } = parsed.data
-        await database.transaction(async (tx) => {
-          await tx
-            .update(authUser)
-            .set({ name, updatedAt: new Date() })
-            .where(eq(authUser.id, userId))
-          await tx
-            .insert(userProfile)
-            .values({ userId, givenName, familyName })
-            .onConflictDoUpdate({
-              target: userProfile.userId,
-              set: { givenName, familyName, updatedAt: new Date() }
-            })
-        })
-        return json(await profile(userId))
       }
       if (avatarRequest && request.method === 'PUT') {
         if (
