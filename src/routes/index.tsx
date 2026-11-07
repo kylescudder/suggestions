@@ -1,110 +1,86 @@
 import { SignIn, UserButton, useAuth } from '@clerk/tanstack-react-start'
 import { createFileRoute, Link, useLoaderData } from '@tanstack/react-router'
-import { useQueryClient } from '@tanstack/react-query'
 import { MagicalSuggestionForm } from '@/components/MagicalSuggestionForm'
 import { AdminDashboard } from '@/components/AdminDashboard'
 import { lazy, Suspense, useEffect, useState } from 'react'
-import { Shield, Sparkles, UserRound } from 'lucide-react'
+import { Shield, Sparkles } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { authClient } from '@/lib/auth-client'
-import { clearPendingSignIn, readPendingSignIn } from '@/lib/pending-sign-in'
+import { clearPendingSignIn } from '@/lib/pending-sign-in'
 
-const BetterAuthSignIn = lazy(() =>
-  import('@/components/BetterAuthSignIn').then(({ BetterAuthSignIn }) => ({
-    default: BetterAuthSignIn
+const BetterAuthUserMenu = lazy(() =>
+  import('@/components/BetterAuthUserMenu').then(({ BetterAuthUserMenu }) => ({
+    default: BetterAuthUserMenu
   }))
 )
 
 export const Route = createFileRoute('/')({
+  // `?view=admin` opens the dashboard; sign-in returns here with it.
+  validateSearch: (search: Record<string, unknown>): { view?: 'admin' } =>
+    search.view === 'admin' ? { view: 'admin' } : {},
   component: Home
 })
 
 function Home() {
   const { provider } = useLoaderData({ from: '__root__' })
-  return provider === 'clerk' ? <ClerkHome /> : <BetterAuthHome />
+  const { view } = Route.useSearch()
+  return provider === 'clerk' ? (
+    <ClerkHome openAdmin={view === 'admin'} />
+  ) : (
+    <BetterAuthHome openAdmin={view === 'admin'} />
+  )
 }
 
-function ClerkHome() {
+function ClerkHome({ openAdmin }: { openAdmin: boolean }) {
   const { isSignedIn } = useAuth()
   return (
     <SuggestionPage
       signedIn={!!isSignedIn}
+      openAdmin={openAdmin}
       account={<UserButton />}
       signIn={<SignIn routing='hash' />}
     />
   )
 }
 
-function BetterAuthHome() {
-  const { data: session, isPending } = authClient.useSession()
-  const queryClient = useQueryClient()
-  const [error, setError] = useState('')
+function BetterAuthHome({ openAdmin }: { openAdmin: boolean }) {
+  const { data: session } = authClient.useSession()
   useEffect(() => {
     if (session) clearPendingSignIn()
   }, [session])
-  async function signOut() {
-    setError('')
-    try {
-      const result = await authClient.signOut()
-      if (result.error) setError('Unable to sign out. Please try again.')
-      else queryClient.clear()
-    } catch {
-      setError('Unable to sign out. Please try again.')
-    }
-  }
   return (
     <SuggestionPage
       signedIn={!!session}
-      resumeSignIn
+      openAdmin={openAdmin}
       account={
-        <>
-          <Link
-            to='/profile'
-            className='flex items-center gap-2 rounded-lg border border-white/30 px-3 py-2 text-sm text-white hover:bg-white/10'
-          >
-            <UserRound aria-hidden='true' className='h-4 w-4' /> Profile
-          </Link>
-          <button
-            onClick={() => void signOut()}
-            className='rounded-lg border border-white/30 px-3 py-2 text-sm text-white hover:bg-white/10'
-          >
-            Sign out
-          </button>
-        </>
-      }
-      signIn={
         <Suspense
-          fallback={
-            <p role='status' className='text-center text-white'>
-              Loading sign-in…
-            </p>
-          }
+          fallback={<span className='block size-8 rounded-full bg-white/20' />}
         >
-          <BetterAuthSignIn sessionPending={isPending} />
+          <BetterAuthUserMenu />
         </Suspense>
       }
-      error={error}
+      signInHref='/auth/sign-in'
     />
   )
 }
 
 function SuggestionPage({
   signedIn,
+  openAdmin,
   account,
   signIn,
-  error,
-  resumeSignIn = false
+  signInHref
 }: {
   signedIn: boolean
+  openAdmin: boolean
   account: ReactNode
-  signIn: ReactNode
-  error?: string
-  resumeSignIn?: boolean
+  signIn?: ReactNode
+  signInHref?: string
 }) {
-  const [showAdmin, setShowAdmin] = useState(false)
+  const [showAdmin, setShowAdmin] = useState(openAdmin)
   useEffect(() => {
-    if (resumeSignIn && readPendingSignIn()) setShowAdmin(true)
-  }, [resumeSignIn])
+    if (openAdmin) setShowAdmin(true)
+  }, [openAdmin])
 
   return (
     <div className='relative min-h-screen overflow-hidden bg-linear-to-br from-purple-900 via-blue-900 to-indigo-900'>
@@ -136,6 +112,14 @@ function SuggestionPage({
                 </button>
                 {account}
               </>
+            ) : signInHref ? (
+              <Link
+                to={signInHref}
+                className='flex items-center gap-2 rounded-lg border border-white/30 bg-white/20 px-4 py-2 text-white backdrop-blur-xs transition-all duration-300 hover:bg-white/30'
+              >
+                <Shield className='h-4 w-4' />
+                <span>Admin</span>
+              </Link>
             ) : (
               <button
                 onClick={() => setShowAdmin(!showAdmin)}
@@ -150,11 +134,6 @@ function SuggestionPage({
       </header>
 
       <main className='relative z-10 flex-1 px-4 py-8 sm:px-8'>
-        {error && (
-          <p role='alert' className='mb-4 text-center text-red-200'>
-            {error}
-          </p>
-        )}
         {signedIn ? (
           showAdmin ? (
             <>
@@ -163,7 +142,7 @@ function SuggestionPage({
           ) : (
             <MagicalSuggestionForm />
           )
-        ) : showAdmin ? (
+        ) : showAdmin && signIn ? (
           signIn
         ) : (
           <MagicalSuggestionForm />

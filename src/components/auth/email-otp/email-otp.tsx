@@ -222,12 +222,12 @@ export function EmailOtp({ className, sessionPending = false }: EmailOtpProps) {
     <Card className={cn('w-full max-w-sm', className)}>
       <ReauthenticationNotice />
       <CardHeader>
-        <CardTitle className='text-xl'>{localization.auth.signIn}</CardTitle>
+        <CardTitle className='text-xl'>Admin sign-in</CardTitle>
 
         <CardDescription>
           {codeSent
             ? `If ${email} has admin access, a code is on its way. It expires in 10 minutes.`
-            : 'Use your admin email or a saved passkey to sign in.'}
+            : 'Enter your admin email and we’ll send you a six-digit code.'}
         </CardDescription>
       </CardHeader>
 
@@ -366,8 +366,8 @@ export function EmailOtp({ className, sessionPending = false }: EmailOtpProps) {
         </div>
 
         <FieldDescription className='mt-6'>
-          You can submit an idea without signing in. Sign in with an email code
-          first to save a passkey in Profile.
+          Signed in before? Save a passkey or set a password in Profile for next
+          time.
         </FieldDescription>
       </CardContent>
     </Card>

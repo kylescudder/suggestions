@@ -409,16 +409,25 @@ async function authFixture(dailyEmailLimit = 40, failMail = false) {
   const { db } = await import('../src/server/db')
   const { createSuggestionsAuth } = await import('../src/server/auth-factory')
   const sent = new Map<string, string>()
+  const links: { email: string; kind: string; url: string }[] = []
   const settings = {
     baseURL: authOrigin,
     secret: process.env.BETTER_AUTH_SECRET!,
     adminEmails: ['admin@example.com', 'second@example.com'],
     dailyEmailLimit
   }
-  const auth = createSuggestionsAuth(db, settings, async (email, otp) => {
-    if (failMail) throw new Error('Simulated mail outage')
-    sent.set(email, otp)
-  })
+  const auth = createSuggestionsAuth(
+    db,
+    settings,
+    async (email, otp) => {
+      if (failMail) throw new Error('Simulated mail outage')
+      sent.set(email, otp)
+    },
+    async (email, kind, url) => {
+      if (failMail) throw new Error('Simulated mail outage')
+      links.push({ email, kind, url })
+    }
+  )
   const ip = `203.0.113.${++fixtureNumber}`
   function request(
     path: string,
@@ -440,7 +449,7 @@ async function authFixture(dailyEmailLimit = 40, failMail = false) {
       })
     )
   }
-  return { auth, request, sent, settings, db }
+  return { auth, request, sent, links, settings, db }
 }
 
 function mergeCookies(response: Response, prior = '') {
@@ -1162,15 +1171,211 @@ test('mail failure does not block anonymous submissions; unused auth surfaces st
   const [stored] = await owner`SELECT title FROM suggestions WHERE id = ${id}`
   assert.equal(stored.title, 'Mail outage')
   await owner`DELETE FROM suggestions WHERE id = ${id}`
-  for (const path of [
-    '/email-otp/get-verification-otp',
-    '/sign-up/email',
-    '/request-password-reset'
-  ])
+  for (const path of ['/email-otp/get-verification-otp', '/sign-up/email'])
     assert.equal(
-      (await application.fetch(new Request(authOrigin + '/api/auth' + path)))
-        .status,
+      (
+        await application.fetch(
+          new Request(authOrigin + '/api/auth' + path, {
+            method: 'POST',
+            headers: { Origin: authOrigin, 'Content-Type': 'application/json' },
+            body: '{}'
+          })
+        )
+      ).status,
       404
     )
+  // The new sign-in methods are reachable through the app's auth route.
+  for (const path of [
+    '/sign-in/email',
+    '/sign-in/magic-link',
+    '/request-password-reset',
+    '/reset-password',
+    '/list-accounts'
+  ])
+    assert.notEqual(
+      (
+        await application.fetch(
+          new Request(authOrigin + '/api/auth' + path, {
+            method: path === '/list-accounts' ? 'GET' : 'POST',
+            headers: { Origin: authOrigin, 'Content-Type': 'application/json' },
+            body: path === '/list-accounts' ? undefined : '{}'
+          })
+        )
+      ).status,
+      404,
+      path
+    )
   assert.equal((await health()).status, 200)
+})
+
+test('password, reset links and magic links are allowlisted and sign-up stays closed', async () => {
+  const fixture = await authFixture()
+  const password = 'correct horse battery staple'
+  // No public sign-up, even for an allowlisted address.
+  const signUp = await fixture.request('/sign-up/email', {
+    email: 'admin@example.com',
+    password,
+    name: 'Admin'
+  })
+  assert.equal(signUp.status, 400, await signUp.clone().text())
+  const { user } = await signInFixture(fixture)
+  // An account created by email code has no password until a reset link sets one.
+  const noPassword = await fixture.request('/sign-in/email', {
+    email: 'admin@example.com',
+    password
+  })
+  assert.equal(noPassword.status, 401)
+  // The sign-in code used this address's one-email-a-minute allowance.
+  const tooSoon = await fixture.request('/request-password-reset', {
+    email: 'admin@example.com',
+    redirectTo: '/auth/reset-password'
+  })
+  assert.equal(tooSoon.status, 429)
+  assert.equal(fixture.links.length, 0)
+  await owner`DELETE FROM auth_email_limit`
+
+  // Reset: generic answer for everyone, mail only for allowlisted admins.
+  for (const email of ['stranger@example.com', 'ADMIN@example.com '])
+    assert.equal(
+      (
+        await fixture.request('/request-password-reset', {
+          email,
+          redirectTo: '/auth/reset-password'
+        })
+      ).status,
+      200
+    )
+  assert.deepEqual(
+    fixture.links.map(({ email, kind }) => [email, kind]),
+    [['admin@example.com', 'reset-password']]
+  )
+  const resetUrl = new URL(fixture.links[0].url)
+  assert.equal(resetUrl.origin, authOrigin)
+  const token = resetUrl.pathname.split('/').at(-1)!
+  const tooShort = await fixture.request('/reset-password', {
+    newPassword: 'short',
+    token
+  })
+  assert.equal(tooShort.status, 400)
+  const reset = await fixture.request('/reset-password', {
+    newPassword: password,
+    token
+  })
+  assert.equal(reset.status, 200, await reset.clone().text())
+  assert.equal(
+    (
+      await fixture.request('/reset-password', {
+        newPassword: password + '!',
+        token
+      })
+    ).status,
+    400,
+    'Reset tokens are single-use'
+  )
+  const [credential] = await owner`
+    SELECT password FROM auth_account
+    WHERE user_id = ${user.id} AND provider_id = 'credential'`
+  assert.ok(credential.password && !credential.password.includes(password))
+
+  assert.equal(
+    (
+      await fixture.request('/sign-in/email', {
+        email: 'admin@example.com',
+        password: 'wrong password entirely'
+      })
+    ).status,
+    401
+  )
+  const signedIn = await fixture.request('/sign-in/email', {
+    email: 'admin@example.com',
+    password
+  })
+  assert.equal(signedIn.status, 200, await signedIn.clone().text())
+  const session = await fixture.request(
+    '/get-session',
+    undefined,
+    mergeCookies(signedIn)
+  )
+  assert.equal((await session.json()).user.id, user.id)
+
+  // Magic link: allowlisted only, same-origin callback, single use.
+  fixture.links.length = 0
+  assert.equal(
+    (
+      await fixture.request('/sign-in/magic-link', {
+        email: 'stranger@example.com',
+        callbackURL: '/?view=admin'
+      })
+    ).status,
+    200
+  )
+  assert.equal(fixture.links.length, 0)
+  for (const callbackURL of [
+    'https://attacker.example/',
+    '//attacker.example/',
+    '/.//attacker.example/',
+    '/\t/attacker.example/',
+    '/\\attacker.example/'
+  ]) {
+    // Stay under the per-IP magic-link limit; this checks the redirect guard.
+    await owner`DELETE FROM auth_rate_limit`
+    assert.equal(
+      (
+        await fixture.request('/sign-in/magic-link', {
+          email: 'second@example.com',
+          callbackURL
+        })
+      ).status,
+      403,
+      JSON.stringify(callbackURL)
+    )
+  }
+  await owner`DELETE FROM auth_rate_limit`
+  // Three reset requests above used this IP's per-minute allowance.
+  await owner`DELETE FROM auth_rate_limit`
+  assert.equal(
+    (
+      await fixture.request('/request-password-reset', {
+        email: 'admin@example.com',
+        redirectTo: 'https://attacker.example/reset'
+      })
+    ).status,
+    403
+  )
+  assert.equal(fixture.links.length, 0)
+  const requested = await fixture.request('/sign-in/magic-link', {
+    email: 'second@example.com',
+    callbackURL: authOrigin + '/?view=admin'
+  })
+  assert.equal(requested.status, 200, await requested.clone().text())
+  assert.deepEqual(
+    fixture.links.map(({ email, kind }) => [email, kind]),
+    [['second@example.com', 'magic-link']]
+  )
+  const magic = new URL(fixture.links[0].url)
+  assert.equal(magic.origin, authOrigin)
+  const verify = () =>
+    fixture.auth.handler(
+      new Request(magic, {
+        headers: { 'CF-Connecting-IP': '203.0.113.250' },
+        redirect: 'manual'
+      })
+    )
+  const verified = await verify()
+  assert.equal(verified.status, 302)
+  assert.equal(verified.headers.get('location'), authOrigin + '/?view=admin')
+  const magicSession = await fixture.request(
+    '/get-session',
+    undefined,
+    mergeCookies(verified)
+  )
+  const magicUser = (await magicSession.json()).user
+  assert.equal(magicUser.email, 'second@example.com')
+  assert.equal(magicUser.emailVerified, true)
+  const replay = await verify()
+  assert.equal(mergeCookies(replay).includes('session_token'), false)
+  const [stored] = await owner`
+    SELECT count(*)::int AS users FROM auth_user
+    WHERE email = 'stranger@example.com'`
+  assert.equal(stored.users, 0)
 })
