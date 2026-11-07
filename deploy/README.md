@@ -101,7 +101,8 @@ do not call the mail provider.
 Sign-in uses the official Better Auth UI shadcn `EmailOtp`, `OtpField` and
 `PasskeyButton` components, with a neutral card and the app's purple accent.
 The auth UI loads when Admin is opened; anonymous submissions do not load it.
-Successful email-code or passkey sign-in opens `/profile` for account settings.
+Successful email-code or passkey sign-in on the homepage opens the admin
+dashboard; sign-in on `/profile` stays on `/profile`.
 Verification requires the explicit Verify code button, including after pasting
 or autofilling all six digits. Email codes remain the recovery method.
 

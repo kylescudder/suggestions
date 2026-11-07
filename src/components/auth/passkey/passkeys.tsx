@@ -33,14 +33,16 @@ export function Passkeys({ className }: PasskeysProps) {
           {passkeyLocalization.passkeys}
         </h2>
 
-        <Button
-          className='shrink-0'
-          size='sm'
-          disabled={isPending}
-          onClick={() => setAddOpen(true)}
-        >
-          {passkeyLocalization.addPasskey}
-        </Button>
+        {/* The empty state has its own add button. */}
+        {!!passkeys?.length && (
+          <Button
+            className='shrink-0'
+            size='sm'
+            onClick={() => setAddOpen(true)}
+          >
+            {passkeyLocalization.addPasskey}
+          </Button>
+        )}
       </div>
 
       <Card className='p-0'>
