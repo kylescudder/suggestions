@@ -22,6 +22,7 @@ export function getBetterAuth() {
     (email, otp) =>
       sendLoginEmail(
         { apiKey: env.BREVO_API_KEY!, from: env.AUTH_EMAIL_FROM! },
+        new URL(env.BETTER_AUTH_URL!).origin,
         email,
         otp
       ),
