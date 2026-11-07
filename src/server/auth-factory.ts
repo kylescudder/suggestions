@@ -6,15 +6,22 @@ import {
   createAuthMiddleware,
   getSessionFromCtx
 } from 'better-auth/api'
-import { emailOTP } from 'better-auth/plugins'
+import { emailOTP, magicLink } from 'better-auth/plugins'
 import { drizzleAdapter } from '@better-auth/drizzle-adapter'
 import { passkey } from '@better-auth/passkey'
 import type { db } from './db'
 import * as schema from './auth-schema'
-import { reserveEmailDelivery } from './auth-email'
+import { reserveEmailDelivery, type LinkEmailKind } from './auth-email'
 import { isAllowedAdminEmail, isVerifiedAdmin } from './auth-policy'
 import { userProfile } from './profile-schema'
 import { profileUpdateSchema } from './profile-validation'
+
+// Relative paths, or absolute URLs on this origin, only.
+function isSameSiteTarget(target: unknown, origin: string) {
+  if (typeof target !== 'string' || target.includes('\\')) return false
+  if (target.startsWith('/')) return !target.startsWith('//')
+  return URL.canParse(target) && new URL(target).origin === origin
+}
 
 export type AuthSettings = {
   baseURL: string
@@ -35,7 +42,16 @@ type SuggestionsAuth = {
 export function createSuggestionsAuth(
   database: typeof db,
   settings: AuthSettings,
-  sendOTP: (email: string, otp: string) => Promise<void>
+  sendOTP: (email: string, otp: string) => Promise<void>,
+  sendLink: (
+    email: string,
+    kind: LinkEmailKind,
+    url: string
+  ) => Promise<void> = async () => {
+    throw new APIError('SERVICE_UNAVAILABLE', {
+      message: 'The sign-in email could not be sent. Please try again later.'
+    })
+  }
 ): SuggestionsAuth {
   const origin = new URL(settings.baseURL).origin
   const publicPasskeyPaths = new Set([
@@ -66,7 +82,21 @@ export function createSuggestionsAuth(
       freshAge: 3600,
       cookieCache: { enabled: false }
     },
-    emailAndPassword: { enabled: false },
+    emailAndPassword: {
+      enabled: true,
+      // Accounts are created only for allowlisted admins by email code or
+      // magic link; a password is added later through the reset email.
+      disableSignUp: true,
+      requireEmailVerification: true,
+      minPasswordLength: 12,
+      maxPasswordLength: 128,
+      resetPasswordTokenExpiresIn: 1800,
+      revokeSessionsOnPasswordReset: true,
+      async sendResetPassword({ user, url }) {
+        if (!isAllowedAdminEmail(user.email, settings.adminEmails)) return
+        await sendLink(user.email, 'reset-password', url)
+      }
+    },
     user: {
       changeEmail: { enabled: false },
       additionalFields: {
@@ -91,6 +121,12 @@ export function createSuggestionsAuth(
       customRules: {
         '/email-otp/send-verification-otp': { window: 60, max: 3 },
         '/sign-in/email-otp': { window: 60, max: 10 },
+        '/sign-in/email': { window: 60, max: 5 },
+        '/sign-in/magic-link': { window: 60, max: 3 },
+        '/magic-link/verify': { window: 60, max: 10 },
+        '/request-password-reset': { window: 60, max: 3 },
+        '/reset-password': { window: 60, max: 5 },
+        '/change-password': { window: 60, max: 5 },
         '/passkey/*': { window: 60, max: 20 }
       }
     },
@@ -152,6 +188,42 @@ export function createSuggestionsAuth(
           await reserveEmailDelivery(database, email, settings.dailyEmailLimit)
         }
         if (
+          ctx.path === '/sign-in/magic-link' ||
+          ctx.path === '/request-password-reset'
+        ) {
+          const requestOrigin = ctx.headers?.get('origin')
+          if (
+            (requestOrigin && requestOrigin !== origin) ||
+            ctx.headers?.get('sec-fetch-site') === 'cross-site'
+          )
+            throw new APIError('FORBIDDEN', {
+              message: 'Cross-site request refused'
+            })
+          // Emailed links may only return to this site.
+          for (const key of [
+            'callbackURL',
+            'newUserCallbackURL',
+            'errorCallbackURL',
+            'redirectTo'
+          ]) {
+            const target: unknown = ctx.body?.[key]
+            if (target !== undefined && !isSameSiteTarget(target, origin))
+              throw new APIError('FORBIDDEN', {
+                message: 'Invalid redirect'
+              })
+          }
+          const email =
+            typeof ctx.body?.email === 'string'
+              ? ctx.body.email.trim().toLowerCase()
+              : ''
+          // Same generic answer for every address, so the form never reveals
+          // who has admin access. Only allowlisted admins reach the mailer.
+          if (!isAllowedAdminEmail(email, settings.adminEmails))
+            return ctx.json({ status: true })
+          ctx.body.email = email
+          await reserveEmailDelivery(database, email, settings.dailyEmailLimit)
+        }
+        if (
           ctx.path.startsWith('/passkey/') &&
           !publicPasskeyPaths.has(ctx.path)
         ) {
@@ -196,6 +268,17 @@ export function createSuggestionsAuth(
               message: 'Unsupported sign-in request'
             })
           await sendOTP(email, otp)
+        }
+      }),
+      magicLink({
+        expiresIn: 600,
+        storeToken: 'hashed',
+        async sendMagicLink({ email, url }) {
+          if (!isAllowedAdminEmail(email, settings.adminEmails))
+            throw new APIError('FORBIDDEN', {
+              message: 'Unsupported sign-in request'
+            })
+          await sendLink(email, 'magic-link', url)
         }
       }),
       passkey({

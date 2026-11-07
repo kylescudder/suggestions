@@ -98,11 +98,28 @@ delivery-attempt budget (default 40 per rolling 24 hours), and per-IP auth limit
 Mail failures count toward the attempt budget. Health and public submissions
 do not call the mail provider.
 
-Sign-in uses the official Better Auth UI shadcn `EmailOtp`, `OtpField` and
-`PasskeyButton` components, with a neutral card and the app's purple accent.
-The auth UI loads when Admin is opened; anonymous submissions do not load it.
-Successful email-code or passkey sign-in on the homepage opens the admin
-dashboard; sign-in on `/profile` stays on `/profile`.
+Admin sign-in lives at `/auth/<view>` and offers four methods, each linking to
+the others: password (`/auth/sign-in`), email code (`/auth/email-otp`), magic
+link (`/auth/magic-link`) and passkey. Forgot/reset password use
+`/auth/forgot-password` and `/auth/reset-password`. All use official Better Auth
+UI shadcn components with a neutral card and the app's purple accent; the
+anonymous homepage does not load them. Every method returns to
+`/?view=admin` (the dashboard), or to a same-site `?redirectTo=` path such as
+`/profile`. Off-site `redirectTo`, `callbackURL` and reset `redirectTo` values
+are refused.
+
+There is no sign-up. Accounts are created only for allowlisted admins by an
+email code or magic link; a password is added afterwards from Profile ("Set
+password" sends a reset link) and then changed there. Passwords are 12–128
+characters. A reset revokes existing sessions. Magic links (10 minutes) and
+reset links (30 minutes) are single-use, stored hashed (magic link) or as
+one-time verification records (reset), and share the code emails' allowlist,
+per-recipient cooldown and daily budget. Non-admin addresses receive the same
+generic response and no email. On phones, magic links open wherever the mail
+app opens links, so email codes remain the most reliable mobile method.
+
+Signed-in admins get an avatar menu (Better Auth UI `UserButton`) in the header
+with Profile and Sign out. Sign-out returns to the homepage.
 Verification requires the explicit Verify code button, including after pasting
 or autofilling all six digits. Email codes remain the recovery method.
 

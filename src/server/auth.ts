@@ -2,7 +2,7 @@ import '@tanstack/react-start/server-only'
 import { db } from './db'
 import { readEnv } from './env'
 import { createSuggestionsAuth } from './auth-factory'
-import { sendLoginEmail } from './auth-email'
+import { sendLinkEmail, sendLoginEmail } from './auth-email'
 
 let instance: ReturnType<typeof createSuggestionsAuth> | undefined
 
@@ -24,6 +24,14 @@ export function getBetterAuth() {
         { apiKey: env.BREVO_API_KEY!, from: env.AUTH_EMAIL_FROM! },
         email,
         otp
+      ),
+    (email, kind, url) =>
+      sendLinkEmail(
+        { apiKey: env.BREVO_API_KEY!, from: env.AUTH_EMAIL_FROM! },
+        new URL(env.BETTER_AUTH_URL!).origin,
+        email,
+        kind,
+        url
       )
   )
   return instance

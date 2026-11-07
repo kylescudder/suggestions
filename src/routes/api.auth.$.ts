@@ -8,6 +8,13 @@ const paths = new Set([
   '/update-user',
   '/email-otp/send-verification-otp',
   '/sign-in/email-otp',
+  '/sign-in/email',
+  '/sign-in/magic-link',
+  '/magic-link/verify',
+  '/request-password-reset',
+  '/reset-password',
+  '/change-password',
+  '/list-accounts',
   '/passkey/generate-register-options',
   '/passkey/verify-registration',
   '/passkey/generate-authenticate-options',
@@ -19,7 +26,9 @@ const paths = new Set([
 
 async function handler(request: Request) {
   const path = new URL(request.url).pathname.slice('/api/auth'.length)
-  if (readEnv().AUTH_PROVIDER !== 'better-auth' || !paths.has(path))
+  // The emailed reset link lands on /reset-password/<token> before redirecting.
+  const allowed = paths.has(path) || /^\/reset-password\/[\w-]+$/.test(path)
+  if (readEnv().AUTH_PROVIDER !== 'better-auth' || !allowed)
     return new Response('Not found', { status: 404 })
   return getBetterAuth().handler(request)
 }

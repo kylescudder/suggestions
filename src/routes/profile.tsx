@@ -8,7 +8,7 @@ import { SignIn, UserProfile, useAuth } from '@clerk/tanstack-react-start'
 import { useQueryClient } from '@tanstack/react-query'
 import { useEffect, useState } from 'react'
 import { authClient } from '@/lib/auth-client'
-import { AdminSignIn } from '@/components/AdminSignIn'
+import { ChangePassword } from '@/components/auth/settings/security/change-password'
 import { UserProfile as BetterAuthUserProfile } from '@/components/auth/settings/account/user-profile'
 import { Passkeys } from '@/components/auth/passkey/passkeys'
 import { clearPendingSignIn } from '@/lib/pending-sign-in'
@@ -50,8 +50,18 @@ function BetterAuthProfile() {
   const [signingOut, setSigningOut] = useState(false)
   useEffect(() => {
     if (session) clearPendingSignIn()
-  }, [session])
-  if (!session) return <AdminSignIn sessionPending={isPending} />
+    else if (!isPending)
+      void navigate({
+        href: '/auth/sign-in?redirectTo=%2Fprofile',
+        replace: true
+      })
+  }, [isPending, navigate, session])
+  if (!session)
+    return (
+      <p role='status' className='text-purple-100'>
+        Checking sign-in…
+      </p>
+    )
   async function signOut() {
     setSigningOut(true)
     setError('')
@@ -72,6 +82,9 @@ function BetterAuthProfile() {
   return (
     <>
       <BetterAuthUserProfile key={session.user.id} />
+      <div className='mt-8'>
+        <ChangePassword />
+      </div>
       <Passkeys className='mt-8' />
       <p className='mt-4 text-sm text-purple-100'>
         Email codes remain available for recovery.

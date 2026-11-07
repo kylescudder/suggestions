@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as ProfileRouteImport } from './routes/profile'
 import { Route as ApiProfileRouteImport } from './routes/api.profile'
+import { Route as AuthPathRouteImport } from './routes/auth.$path'
 import { Route as ApiAuthSplatRouteImport } from './routes/api.auth.$'
 import { Route as ApiProfileAvatarRouteImport } from './routes/api.profile.avatar'
 import { Route as ApiTrpcSplatRouteImport } from './routes/api.trpc.$'
@@ -29,6 +30,11 @@ const ProfileRoute = ProfileRouteImport.update({
 const ApiProfileRoute = ApiProfileRouteImport.update({
   id: '/api/profile',
   path: '/api/profile',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AuthPathRoute = AuthPathRouteImport.update({
+  id: '/auth/$path',
+  path: '/auth/$path',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiAuthSplatRoute = ApiAuthSplatRouteImport.update({
@@ -51,6 +57,7 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/profile': typeof ProfileRoute
   '/api/profile': typeof ApiProfileRouteWithChildren
+  '/auth/$path': typeof AuthPathRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/profile/avatar': typeof ApiProfileAvatarRoute
   '/api/trpc/$': typeof ApiTrpcSplatRoute
@@ -59,6 +66,7 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/profile': typeof ProfileRoute
   '/api/profile': typeof ApiProfileRouteWithChildren
+  '/auth/$path': typeof AuthPathRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/profile/avatar': typeof ApiProfileAvatarRoute
   '/api/trpc/$': typeof ApiTrpcSplatRoute
@@ -68,6 +76,7 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/profile': typeof ProfileRoute
   '/api/profile': typeof ApiProfileRouteWithChildren
+  '/auth/$path': typeof AuthPathRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/profile/avatar': typeof ApiProfileAvatarRoute
   '/api/trpc/$': typeof ApiTrpcSplatRoute
@@ -78,6 +87,7 @@ export interface FileRouteTypes {
     | '/'
     | '/profile'
     | '/api/profile'
+    | '/auth/$path'
     | '/api/auth/$'
     | '/api/profile/avatar'
     | '/api/trpc/$'
@@ -86,6 +96,7 @@ export interface FileRouteTypes {
     | '/'
     | '/profile'
     | '/api/profile'
+    | '/auth/$path'
     | '/api/auth/$'
     | '/api/profile/avatar'
     | '/api/trpc/$'
@@ -94,6 +105,7 @@ export interface FileRouteTypes {
     | '/'
     | '/profile'
     | '/api/profile'
+    | '/auth/$path'
     | '/api/auth/$'
     | '/api/profile/avatar'
     | '/api/trpc/$'
@@ -103,6 +115,7 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   ProfileRoute: typeof ProfileRoute
   ApiProfileRoute: typeof ApiProfileRouteWithChildren
+  AuthPathRoute: typeof AuthPathRoute
   ApiAuthSplatRoute: typeof ApiAuthSplatRoute
   ApiTrpcSplatRoute: typeof ApiTrpcSplatRoute
 }
@@ -128,6 +141,13 @@ declare module '@tanstack/react-router' {
       path: '/api/profile'
       fullPath: '/api/profile'
       preLoaderRoute: typeof ApiProfileRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/auth/$path': {
+      id: '/auth/$path'
+      path: '/auth/$path'
+      fullPath: '/auth/$path'
+      preLoaderRoute: typeof AuthPathRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/auth/$': {
@@ -170,6 +190,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   ProfileRoute: ProfileRoute,
   ApiProfileRoute: ApiProfileRouteWithChildren,
+  AuthPathRoute: AuthPathRoute,
   ApiAuthSplatRoute: ApiAuthSplatRoute,
   ApiTrpcSplatRoute: ApiTrpcSplatRoute,
 }
