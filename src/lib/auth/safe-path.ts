@@ -17,7 +17,9 @@ export function safeAppPath(to: string) {
   if (!to.startsWith('/') || hasUnsafeCharacters(to)) return adminHome
   if (!URL.canParse(to, placeholder)) return adminHome
   const url = new URL(to, placeholder)
-  return url.origin === placeholder
+  // `/.//evil.example/` keeps the origin but normalises to the path
+  // `//evil.example/`, which a browser reads as another host.
+  return url.origin === placeholder && !url.pathname.startsWith('//')
     ? url.pathname + url.search + url.hash
     : adminHome
 }

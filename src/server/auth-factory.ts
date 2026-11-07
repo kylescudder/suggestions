@@ -28,9 +28,10 @@ const hasUnsafeCharacters = (value: string) =>
 // prefix check. Control characters and backslashes are refused outright.
 function isSameSiteTarget(target: unknown, origin: string) {
   if (typeof target !== 'string' || hasUnsafeCharacters(target)) return false
-  return (
-    URL.canParse(target, origin) && new URL(target, origin).origin === origin
-  )
+  if (!URL.canParse(target, origin)) return false
+  const url = new URL(target, origin)
+  // Also refuse paths that normalise to `//host` (e.g. `/.//evil.example/`).
+  return url.origin === origin && !url.pathname.startsWith('//')
 }
 
 export type AuthSettings = {

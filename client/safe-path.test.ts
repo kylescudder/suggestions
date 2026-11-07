@@ -7,6 +7,9 @@ test('sign-in redirects stay on this site', () => {
   for (const target of [
     'https://attacker.example/',
     '//attacker.example/',
+    '/.//attacker.example/',
+    '/./../attacker.example/..//attacker.example/',
+    '/%2e//attacker.example/',
     '/\t/attacker.example/',
     '/\n/attacker.example/',
     '/\\attacker.example/',

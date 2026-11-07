@@ -1313,6 +1313,7 @@ test('password, reset links and magic links are allowlisted and sign-up stays cl
   for (const callbackURL of [
     'https://attacker.example/',
     '//attacker.example/',
+    '/.//attacker.example/',
     '/\t/attacker.example/',
     '/\\attacker.example/'
   ]) {
