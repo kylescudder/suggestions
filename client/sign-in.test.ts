@@ -24,6 +24,8 @@ let progress: typeof import('../src/lib/pending-sign-in')
 let UserProfile: typeof import('../src/components/auth/settings/account/user-profile').UserProfile
 let AuthUIProvider: typeof import('../src/components/auth/auth-provider').AuthProvider
 let profileUI: typeof import('../src/lib/profile-ui')
+let emailOtpUI: typeof import('../src/lib/auth/email-otp-plugin')
+let passkeyUI: typeof import('../src/lib/auth/passkey-plugin')
 let profileSession = false
 let profileUserId = 'first-user'
 let queryTools: typeof import('@tanstack/react-query')
@@ -35,6 +37,9 @@ let container: HTMLDivElement
 let sends = 0
 let signedIn = 0
 let signInFails = false
+let sendFails = false
+let lastSend: unknown
+let lastVerify: unknown
 let sessionRequests = 0
 let releaseSession: (() => void) | undefined
 let delaySession = false
@@ -50,6 +55,10 @@ beforeAll(async () => {
     Node: browser.Node,
     Element: browser.Element,
     Image: browser.Image,
+    Event: browser.Event,
+    InputEvent: browser.InputEvent,
+    HTMLTextAreaElement: browser.HTMLTextAreaElement,
+    HTMLSelectElement: browser.HTMLSelectElement,
     HTMLButtonElement: browser.HTMLButtonElement,
     HTMLDivElement: browser.HTMLDivElement,
     MutationObserver: browser.MutationObserver,
@@ -123,9 +132,16 @@ beforeAll(async () => {
       }
       if (url.pathname === '/api/auth/email-otp/send-verification-otp') {
         sends++
-        return Response.json({ success: true })
+        lastSend = JSON.parse(init?.body as string)
+        return sendFails
+          ? Response.json(
+              { code: 'SEND_FAILED', message: 'Unable to send a code' },
+              { status: 500 }
+            )
+          : Response.json({ success: true })
       }
-      if (url.pathname === '/api/auth/sign-in/email-otp')
+      if (url.pathname === '/api/auth/sign-in/email-otp') {
+        lastVerify = JSON.parse(init?.body as string)
         return signInFails
           ? Response.json(
               { code: 'INVALID_OTP', message: 'Invalid code' },
@@ -135,6 +151,7 @@ beforeAll(async () => {
               user: { emailVerified: true },
               token: 'disposable-test-token'
             })
+      }
       throw new Error('Unexpected test request: ' + url.pathname)
     },
     { preconnect: globalThis.fetch.preconnect }
@@ -149,6 +166,8 @@ beforeAll(async () => {
   ;({ AuthProvider: AuthUIProvider } =
     await import('../src/components/auth/auth-provider'))
   profileUI = await import('../src/lib/profile-ui')
+  emailOtpUI = await import('../src/lib/auth/email-otp-plugin')
+  passkeyUI = await import('../src/lib/auth/passkey-plugin')
   queryTools = await import('@tanstack/react-query')
 })
 
@@ -157,6 +176,9 @@ beforeEach(() => {
   sends = 0
   signedIn = 0
   signInFails = false
+  sendFails = false
+  lastSend = undefined
+  lastVerify = undefined
   delaySession = false
   releaseSession = undefined
   profileSession = false
@@ -198,16 +220,32 @@ async function mount(withSession = false) {
   function SignInWithSession() {
     const session = authClient.useSession()
     return createElement(AdminSignIn, {
-      sessionPending: session.isPending,
-      onSignedIn: () => signedIn++
+      sessionPending: session.isPending
     })
   }
+  profileClient ??= new queryTools.QueryClient({
+    defaultOptions: { queries: { retry: false }, mutations: { retry: false } }
+  })
   root = createRoot(container)
   await act(async () => {
     root!.render(
-      withSession
-        ? createElement(SignInWithSession)
-        : createElement(AdminSignIn, { onSignedIn: () => signedIn++ })
+      createElement(
+        AuthUIProvider,
+        {
+          authClient,
+          queryClient: profileClient,
+          navigate: ({ to }) => {
+            assert.equal(to, '/profile')
+            signedIn++
+          },
+          redirectTo: '/profile',
+          emailAndPassword: { enabled: false },
+          plugins: [emailOtpUI.emailOtpPlugin(), passkeyUI.passkeyPlugin()]
+        },
+        withSession
+          ? createElement(SignInWithSession)
+          : createElement(AdminSignIn)
+      )
     )
     await new Promise((resolve) => setTimeout(resolve, 10))
   })
@@ -227,7 +265,9 @@ function browserEvent(type: string, cancelable = false): Event {
 }
 
 async function input(id: string, value: string) {
-  const element = container.querySelector<HTMLInputElement>('#' + id)!
+  const element = container.querySelector<HTMLInputElement>(
+    id === 'admin-email' ? 'input[name="email"]' : 'input[name="code"]'
+  )!
   assert.ok(element)
   await act(async () => {
     Object.getOwnPropertyDescriptor(
@@ -270,12 +310,9 @@ test('email-code progress survives remount without persisting the code or resend
 
   await act(async () => root!.unmount())
   await mount()
+  assert.match(container.textContent!, /admin@example.com/)
   assert.equal(
-    container.querySelector<HTMLInputElement>('#admin-email')!.value,
-    'admin@example.com'
-  )
-  assert.equal(
-    container.querySelector<HTMLInputElement>('#admin-code')!.value,
+    container.querySelector<HTMLInputElement>('input[name="code"]')!.value,
     ''
   )
   assert.match(container.textContent!, /Resend in \d+s/)
@@ -287,7 +324,7 @@ test('real auth-client visibility refresh retains the mounted code field and its
   await input('admin-email', 'admin@example.com')
   await submit()
   await input('admin-code', '123')
-  const field = container.querySelector('#admin-code')
+  const field = container.querySelector('input[name="code"]')
   const requestsBefore = sessionRequests
   delaySession = true
   await act(async () => {
@@ -299,9 +336,9 @@ test('real auth-client visibility refresh retains the mounted code field and its
     'Visibility change did not trigger a session refresh'
   )
   assert.match(container.textContent!, /Checking sign-in/)
-  assert.equal(container.querySelector('#admin-code'), field)
+  assert.equal(container.querySelector('input[name="code"]'), field)
   assert.equal(
-    container.querySelector<HTMLInputElement>('#admin-code')!.value,
+    container.querySelector<HTMLInputElement>('input[name="code"]')!.value,
     '123'
   )
   await act(async () => {
@@ -309,9 +346,9 @@ test('real auth-client visibility refresh retains the mounted code field and its
     releaseSession!()
     await new Promise((resolve) => setTimeout(resolve, 10))
   })
-  assert.equal(container.querySelector('#admin-code'), field)
+  assert.equal(container.querySelector('input[name="code"]'), field)
   assert.equal(
-    container.querySelector<HTMLInputElement>('#admin-code')!.value,
+    container.querySelector<HTMLInputElement>('input[name="code"]')!.value,
     '123'
   )
   assert.equal(sends, 1)
@@ -324,10 +361,10 @@ test('resuming recalculates cooldown and expires old codes using elapsed wall ti
     sentAt: startedAt - 65_000
   })
   await mount()
-  assert.ok(container.querySelector('#admin-code'))
+  assert.ok(container.querySelector('input[name="code"]'))
   assert.ok(
     Array.from(container.querySelectorAll('button')).some(
-      (button) => button.textContent === 'Resend code' && !button.disabled
+      (button) => button.textContent === 'Resend' && !button.disabled
     )
   )
   const clock = spyOn(Date, 'now').mockReturnValue(
@@ -337,11 +374,11 @@ test('resuming recalculates cooldown and expires old codes using elapsed wall ti
     await act(async () =>
       document.dispatchEvent(browserEvent('visibilitychange'))
     )
-    assert.equal(container.querySelector('#admin-code'), null)
+    assert.equal(container.querySelector('input[name="code"]'), null)
     assert.match(container.textContent!, /code has expired/)
     assert.equal(progress.readPendingSignIn(), null)
     assert.equal(
-      container.querySelector<HTMLInputElement>('#admin-email')!.value,
+      container.querySelector<HTMLInputElement>('input[name="email"]')!.value,
       'admin@example.com'
     )
   } finally {
@@ -353,9 +390,9 @@ test('changing email clears progress, failed verification preserves it, and succ
   await mount()
   await input('admin-email', 'admin@example.com')
   await submit()
-  await click('Use another email')
+  await click('Use a different email')
   assert.equal(progress.readPendingSignIn(), null)
-  assert.equal(container.querySelector('#admin-code'), null)
+  assert.equal(container.querySelector('input[name="code"]'), null)
   await input('admin-email', 'other@example.com')
   await submit()
   await input('admin-code', '123456')
@@ -501,4 +538,47 @@ test('shadcn Better Auth UI preserves drafts through session/photo refresh and i
     container.querySelector<HTMLInputElement>('input[name$="email"]')!.value,
     'second@example.com'
   )
+})
+
+test('sign-in renders the shadcn card and six code slots, normalizes email, and verifies only on submit', async () => {
+  await mount()
+  const card = container.querySelector('[data-slot="card"]')!
+  assert.ok(card)
+  assert.match(card.className, /bg-card/)
+  assert.doesNotMatch(card.className, /backdrop-blur|bg-white\/10/)
+  assert.ok(
+    container.querySelector('[data-slot="button"][data-variant="outline"]'),
+    'Native passkey button missing'
+  )
+  assert.equal(container.querySelector('input[type="password"]'), null)
+  await input('admin-email', ' ADMIN@EXAMPLE.COM ')
+  await submit()
+  assert.deepEqual(lastSend, { email: 'admin@example.com', type: 'sign-in' })
+  assert.equal(
+    container.querySelectorAll('[data-slot="input-otp-slot"]').length,
+    6
+  )
+  await input('admin-code', '123456')
+  assert.equal(
+    lastVerify,
+    undefined,
+    'Entering a code must not submit it automatically'
+  )
+  await submit()
+  assert.deepEqual(lastVerify, { email: 'admin@example.com', otp: '123456' })
+  assert.equal(signedIn, 1)
+})
+
+test('failed send stays on the shadcn email form without saving progress or sending automatically on remount', async () => {
+  await mount()
+  sendFails = true
+  await input('admin-email', 'admin@example.com')
+  await submit()
+  assert.ok(container.querySelector('input[name="email"]'))
+  assert.equal(container.querySelector('input[name="code"]'), null)
+  assert.equal(progress.readPendingSignIn(), null)
+  assert.equal(sends, 1)
+  await act(async () => root!.unmount())
+  await mount()
+  assert.equal(sends, 1)
 })
