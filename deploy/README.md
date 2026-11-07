@@ -119,6 +119,33 @@ do not promise that app styling can hide it. Respect suppression/unsubscribe
 state, and retain email-code recovery alongside passkeys. See
 [Brevo's header explanation](https://help.brevo.com/hc/en-us/articles/19100260472850-FAQs-About-list-unsubscribe-and-list-help-headers-in-emails).
 
+## Profile settings
+
+The Better Auth account link opens `/profile`, with an app-styled display name,
+optional first/last names, a read-only verified email, photo management and
+passkeys. Names and pictures are local to the signed-in account; email-code
+sign-in does not discover names or import a Clerk profile automatically.
+Clerk rollback uses its own existing profile component.
+
+Migration `0002_profile` adds only `user_profile`, linked to `auth_user` with
+delete cascade. First/last names and the processed avatar are app-owned; Better
+Auth's existing `name`/`image` fields stay synchronized for session/passkey use.
+No existing suggestions or identities are rewritten. Runtime CRUD uses the
+existing project role/default grants and four-connection application pool.
+
+`/api/profile` and `/api/profile/avatar` require a verified, allowlisted session
+and operate only on that session's user. Writes require the exact app Origin;
+email/verification/identity fields cannot be edited. Photos are private,
+`no-store`, and served only to their owner. Browser uploads accept JPEG/PNG/WebP
+up to 10 MB and prepare a 512-pixel square before sending. The server separately
+caps input at 2 MB/4 megapixels, checks format signatures, decodes and re-encodes
+to a 256-pixel JPEG, stripping metadata. It never fetches a remote image URL.
+The small image is stored as Postgres `bytea`, covered by the existing encrypted
+project backup; no extra volume, service, credential or DNS changes are needed.
+
+Keep this table on image/auth rollback. The previous release can ignore the
+additive profile data. Do not restore an old database just to roll back the UI.
+
 ## Automatic releases
 
 Every push to `main` runs `.github/workflows/release.yml`. CI checks all

@@ -1,14 +1,13 @@
 import { SignIn, UserButton, useAuth } from '@clerk/tanstack-react-start'
-import { createFileRoute, useLoaderData } from '@tanstack/react-router'
+import { createFileRoute, Link, useLoaderData } from '@tanstack/react-router'
 import { useQueryClient } from '@tanstack/react-query'
 import { Toaster } from 'sonner'
 import { MagicalSuggestionForm } from '@/components/MagicalSuggestionForm'
 import { AdminDashboard } from '@/components/AdminDashboard'
 import { useEffect, useState } from 'react'
-import { Shield, Sparkles } from 'lucide-react'
+import { Shield, Sparkles, UserRound } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { AdminSignIn } from '@/components/AdminSignIn'
-import { PasskeySettings } from '@/components/PasskeySettings'
 import { authClient } from '@/lib/auth-client'
 import { clearPendingSignIn, readPendingSignIn } from '@/lib/pending-sign-in'
 
@@ -54,12 +53,20 @@ function BetterAuthHome() {
       signedIn={!!session}
       resumeSignIn
       account={
-        <button
-          onClick={() => void signOut()}
-          className='rounded-lg border border-white/30 px-3 py-2 text-sm text-white hover:bg-white/10'
-        >
-          Sign out
-        </button>
+        <>
+          <Link
+            to='/profile'
+            className='flex items-center gap-2 rounded-lg border border-white/30 px-3 py-2 text-sm text-white hover:bg-white/10'
+          >
+            <UserRound aria-hidden='true' className='h-4 w-4' /> Profile
+          </Link>
+          <button
+            onClick={() => void signOut()}
+            className='rounded-lg border border-white/30 px-3 py-2 text-sm text-white hover:bg-white/10'
+          >
+            Sign out
+          </button>
+        </>
       }
       signIn={
         <AdminSignIn
@@ -67,7 +74,6 @@ function BetterAuthHome() {
           onSignedIn={() => queryClient.clear()}
         />
       }
-      settings={session?.user.emailVerified ? <PasskeySettings /> : undefined}
       error={error}
     />
   )
@@ -77,14 +83,12 @@ function SuggestionPage({
   signedIn,
   account,
   signIn,
-  settings,
   error,
   resumeSignIn = false
 }: {
   signedIn: boolean
   account: ReactNode
   signIn: ReactNode
-  settings?: ReactNode
   error?: string
   resumeSignIn?: boolean
 }) {
@@ -146,7 +150,6 @@ function SuggestionPage({
           showAdmin ? (
             <>
               <AdminDashboard />
-              {settings}
             </>
           ) : (
             <MagicalSuggestionForm />

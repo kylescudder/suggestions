@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 import { afterAll, beforeAll, test } from 'bun:test'
 import { randomUUID } from 'node:crypto'
 import postgres from 'postgres'
+import sharp from 'sharp'
 import { stallHealthQueries } from '../deploy/postgres-proxy'
 import { virtualAuthenticator } from './webauthn-fixture'
 
@@ -184,7 +185,7 @@ test('owner migrations are repeatable and preserve their journal', async () => {
   assert.equal(await migration.exited, 0, 'Migration failed')
   const [journal] =
     await owner`SELECT count(*)::int AS applied FROM drizzle.__drizzle_migrations`
-  assert.equal(journal.applied, 2)
+  assert.equal(journal.applied, 3)
 })
 
 test('adding authentication preserves existing anonymous suggestions and legacy fields', () => {
@@ -579,6 +580,216 @@ test('email-code sign-in is allowlisted, hashed, single-use, and authorizes the 
   assert.equal(
     await (await fixture.request('/get-session', undefined, cookie)).json(),
     null
+  )
+})
+
+test('profile edits persist only for the verified session owner and cannot change identity or permissions', async () => {
+  const fixture = await authFixture()
+  const { cookie, user } = await signInFixture(fixture)
+  const { cookie: otherCookie, user: other } = await signInFixture(
+    fixture,
+    'second@example.com'
+  )
+  const { createProfileHandler } = await import('../src/server/profile-handler')
+  const handler = createProfileHandler(fixture.db, {
+    origin: authOrigin,
+    adminEmails: fixture.settings.adminEmails,
+    getSession: (headers) => fixture.auth.api.getSession({ headers })
+  })
+  const request = (
+    body?: unknown,
+    extra: Record<string, string> = {},
+    session = cookie
+  ) =>
+    handler(
+      new Request(authOrigin + '/api/profile', {
+        method: body === undefined ? 'GET' : 'PATCH',
+        headers: {
+          Origin: authOrigin,
+          Cookie: session,
+          'Content-Type': 'application/json',
+          ...extra
+        },
+        body: body === undefined ? undefined : JSON.stringify(body)
+      })
+    )
+  assert.equal((await request(undefined, {}, '')).status, 401)
+  const details = {
+    name: '  Display Name  ',
+    givenName: 'Given',
+    familyName: 'Family'
+  }
+  assert.equal(
+    (await request(details, { Origin: 'https://sibling.auth.test' })).status,
+    403
+  )
+  assert.equal((await request(details, { Origin: '' })).status, 403)
+  for (const field of [
+    { email: 'attacker@example.com' },
+    { emailVerified: true },
+    { userId: other.id },
+    { image: 'https://example.com/track' }
+  ])
+    assert.equal((await request({ ...details, ...field })).status, 400)
+  assert.equal((await request({ ...details, name: '' })).status, 400)
+  assert.equal(
+    (await request({ ...details, name: 'x'.repeat(121) })).status,
+    400
+  )
+  const saved = await request(details)
+  assert.equal(saved.status, 200)
+  assert.equal(saved.headers.get('Cache-Control'), 'no-store')
+  assert.deepEqual(await saved.json(), {
+    name: 'Display Name',
+    givenName: 'Given',
+    familyName: 'Family',
+    email: user.email,
+    emailVerified: true,
+    image: null
+  })
+  const [stored] =
+    await owner`SELECT u.name, u.email, u.email_verified, p.given_name, p.family_name FROM auth_user u JOIN user_profile p ON p.user_id=u.id WHERE u.id=${user.id}`
+  assert.equal(stored.name, 'Display Name')
+  assert.equal(stored.email, user.email)
+  assert.equal(stored.email_verified, true)
+  const different = await (await request(undefined, {}, otherCookie)).json()
+  assert.equal(different.email, other.email)
+  assert.equal(different.givenName, '')
+  // A new handler/session read sees the persisted profile and canonical auth name.
+  assert.equal((await (await request()).json()).name, 'Display Name')
+  const routed = await application.fetch(
+    new Request(authOrigin + '/api/profile', { headers: { Cookie: cookie } })
+  )
+  assert.equal(routed.status, 200)
+  assert.equal((await routed.json()).name, 'Display Name')
+  const session = await fixture.auth.api.getSession({
+    headers: new Headers({ Cookie: cookie })
+  })
+  assert.equal(
+    (session!.user as typeof user & { name: string }).name,
+    'Display Name'
+  )
+  await owner`UPDATE auth_user SET email_verified=false WHERE id=${user.id}`
+  assert.equal((await request()).status, 403)
+  await owner`UPDATE auth_user SET email_verified=true, email='removed@example.com' WHERE id=${user.id}`
+  assert.equal((await request()).status, 403)
+})
+
+test('profile photos are bounded, re-encoded, private to their owner and removable', async () => {
+  const fixture = await authFixture()
+  const { cookie, user } = await signInFixture(fixture)
+  const other = await signInFixture(fixture, 'second@example.com')
+  const { createProfileHandler } = await import('../src/server/profile-handler')
+  const handler = createProfileHandler(fixture.db, {
+    origin: authOrigin,
+    adminEmails: fixture.settings.adminEmails,
+    getSession: (headers) => fixture.auth.api.getSession({ headers })
+  })
+  const image = await sharp({
+    create: { width: 64, height: 32, channels: 3, background: '#8844ff' }
+  })
+    .png()
+    .withMetadata({ exif: { IFD0: { Artist: 'Test metadata to strip' } } })
+    .toBuffer()
+  const request = (
+    method = 'GET',
+    body?: BodyInit,
+    type = 'image/png',
+    session = cookie,
+    extra: Record<string, string> = {}
+  ) =>
+    handler(
+      new Request(authOrigin + '/api/profile/avatar', {
+        method,
+        body,
+        headers: {
+          Origin: authOrigin,
+          Cookie: session,
+          'Content-Type': type,
+          ...extra
+        }
+      })
+    )
+  assert.equal(
+    (await request('PUT', new Uint8Array(image), 'image/png', '')).status,
+    401
+  )
+  assert.equal(
+    (
+      await request('PUT', new Uint8Array(image), 'image/png', cookie, {
+        Origin: 'https://sibling.auth.test'
+      })
+    ).status,
+    403
+  )
+  assert.equal(
+    (await request('PUT', '<svg onload="alert(1)"/>', 'image/svg+xml')).status,
+    415
+  )
+  assert.equal(
+    (await request('PUT', '<svg onload="alert(1)"/>', 'image/png')).status,
+    400
+  )
+  assert.equal(
+    (await request('PUT', new Uint8Array(2 * 1024 * 1024 + 1))).status,
+    413
+  )
+  const first = await request('PUT', new Uint8Array(image))
+  assert.equal(first.status, 200, await first.clone().text())
+  const initial = await first.json()
+  assert.match(initial.image, /^\/api\/profile\/avatar\?v=/)
+  const picture = await request()
+  assert.equal(picture.status, 200)
+  assert.equal(picture.headers.get('Content-Type'), 'image/jpeg')
+  assert.equal(picture.headers.get('Cache-Control'), 'no-store')
+  assert.equal(
+    picture.headers.get('Cross-Origin-Resource-Policy'),
+    'same-origin'
+  )
+  const metadata = await sharp(
+    Buffer.from(await picture.arrayBuffer())
+  ).metadata()
+  assert.equal(metadata.format, 'jpeg')
+  assert.equal(metadata.width, 256)
+  assert.equal(metadata.height, 256)
+  assert.equal(metadata.exif, undefined)
+  assert.equal(
+    (await request('GET', undefined, 'image/png', other.cookie)).status,
+    404
+  )
+  const next = await (await request('PUT', new Uint8Array(image))).json()
+  assert.notEqual(next.image, initial.image)
+  const [stored] = await owner`SELECT image FROM auth_user WHERE id=${user.id}`
+  assert.equal(stored.image, next.image)
+  const routed = await application.fetch(
+    new Request(authOrigin + '/api/profile/avatar', {
+      method: 'PUT',
+      headers: {
+        Origin: authOrigin,
+        Cookie: cookie,
+        'Content-Type': 'image/png'
+      },
+      body: new Uint8Array(image)
+    })
+  )
+  assert.equal(routed.status, 200, await routed.clone().text())
+  assert.equal((await request('DELETE')).status, 200)
+  assert.equal((await request()).status, 404)
+  const [removed] = await owner`SELECT image FROM auth_user WHERE id=${user.id}`
+  assert.equal(removed.image, null)
+  // The real application routes use the same protected handler.
+  assert.equal(
+    (await application.fetch(new Request(authOrigin + '/api/profile'))).status,
+    401
+  )
+  assert.equal(
+    (await application.fetch(new Request(authOrigin + '/api/profile/avatar')))
+      .status,
+    401
+  )
+  assert.equal(
+    (await application.fetch(new Request(authOrigin + '/profile'))).status,
+    200
   )
 })
 

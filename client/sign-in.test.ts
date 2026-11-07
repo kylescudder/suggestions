@@ -12,6 +12,8 @@ import {
 import { Window } from 'happy-dom'
 import { act, createElement } from 'react'
 import type { Root } from 'react-dom/client'
+import type { Profile } from '../src/lib/profile'
+import type { QueryClient } from '@tanstack/react-query'
 
 const browser = new Window({ url: 'https://suggestions.auth.test' })
 const originalGlobals = new Map<string, PropertyDescriptor | undefined>()
@@ -19,6 +21,12 @@ let createRoot: typeof import('react-dom/client').createRoot
 let AdminSignIn: typeof import('../src/components/AdminSignIn').AdminSignIn
 let authClient: typeof import('../src/lib/auth-client').authClient
 let progress: typeof import('../src/lib/pending-sign-in')
+let ProfileEditor: typeof import('../src/components/ProfileEditor').ProfileEditor
+let queryTools: typeof import('@tanstack/react-query')
+let profileClient: QueryClient | undefined
+let profileState: Profile
+let profileSave: unknown
+let profileReads = 0
 let root: Root | undefined
 let container: HTMLDivElement
 let sends = 0
@@ -44,7 +52,10 @@ beforeAll(async () => {
     Object.defineProperty(globalThis, key, { configurable: true, value })
   }
   const mockFetch = Object.assign(
-    async (input: Parameters<typeof fetch>[0]) => {
+    async (
+      input: Parameters<typeof fetch>[0],
+      init?: Parameters<typeof fetch>[1]
+    ) => {
       const url = new URL(
         typeof input === 'string'
           ? input
@@ -53,6 +64,21 @@ beforeAll(async () => {
             : input.url,
         browser.location.origin
       )
+      if (url.pathname === '/api/profile') {
+        profileReads++
+        if (init?.method === 'PATCH') {
+          profileSave = JSON.parse(init.body as string)
+          profileState = {
+            ...profileState,
+            ...(profileSave as Partial<Profile>)
+          }
+        }
+        return Response.json(profileState)
+      }
+      if (url.pathname === '/api/profile/avatar' && init?.method === 'DELETE') {
+        profileState = { ...profileState, image: null }
+        return Response.json(profileState)
+      }
       if (url.pathname === '/api/auth/get-session') {
         sessionRequests++
         if (delaySession)
@@ -84,6 +110,8 @@ beforeAll(async () => {
   ;({ AdminSignIn } = await import('../src/components/AdminSignIn'))
   ;({ authClient } = await import('../src/lib/auth-client'))
   progress = await import('../src/lib/pending-sign-in')
+  ;({ ProfileEditor } = await import('../src/components/ProfileEditor'))
+  queryTools = await import('@tanstack/react-query')
 })
 
 beforeEach(() => {
@@ -93,6 +121,16 @@ beforeEach(() => {
   signInFails = false
   delaySession = false
   releaseSession = undefined
+  profileReads = 0
+  profileSave = undefined
+  profileState = {
+    name: 'Original Name',
+    givenName: '',
+    familyName: '',
+    email: 'admin@example.com',
+    emailVerified: true,
+    image: '/api/profile/avatar?v=disposable-test'
+  }
   container = document.createElement('div')
   document.body.append(container)
 })
@@ -101,6 +139,8 @@ afterEach(async () => {
   releaseSession?.()
   await act(async () => root?.unmount())
   root = undefined
+  profileClient?.clear()
+  profileClient = undefined
   container.remove()
 })
 
@@ -326,4 +366,82 @@ test('blocked session storage does not prevent sending or entering a code', asyn
     if (descriptor) Object.defineProperty(browser, 'sessionStorage', descriptor)
     else Reflect.deleteProperty(browser, 'sessionStorage')
   }
+})
+
+test('profile drafts survive focus and photo changes, save only names, and reset for a different account', async () => {
+  profileClient = new queryTools.QueryClient({
+    defaultOptions: { queries: { retry: false } }
+  })
+  let refreshed = 0
+  root = createRoot(container)
+  const render = (userId: string) =>
+    createElement(
+      queryTools.QueryClientProvider,
+      { client: profileClient! },
+      createElement(ProfileEditor, {
+        userId,
+        onUpdated: async () => {
+          refreshed++
+        }
+      })
+    )
+  await act(async () => {
+    root!.render(render('first-user'))
+  })
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 20))
+  })
+  assert.equal(
+    container.querySelector<HTMLInputElement>('#profile-email')!.readOnly,
+    true
+  )
+  await input('profile-name', 'Unsaved draft')
+  await input('profile-givenName', 'Given')
+  await input('profile-familyName', 'Family')
+  const reads = profileReads
+  await act(async () => {
+    document.dispatchEvent(browserEvent('visibilitychange'))
+    await new Promise((resolve) => setTimeout(resolve, 10))
+  })
+  assert.equal(profileReads, reads)
+  await click('Remove photo')
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 10))
+  })
+  assert.equal(
+    container.querySelector<HTMLInputElement>('#profile-name')!.value,
+    'Unsaved draft'
+  )
+  assert.equal(container.querySelector('img'), null)
+  await submit()
+  assert.deepEqual(profileSave, {
+    name: 'Unsaved draft',
+    givenName: 'Given',
+    familyName: 'Family'
+  })
+  assert.match(container.textContent!, /Profile saved/)
+  assert.equal(refreshed, 2)
+  assert.equal(
+    container.querySelector<HTMLInputElement>('#profile-email')!.value,
+    'admin@example.com'
+  )
+  profileState = {
+    ...profileState,
+    name: 'Other account',
+    givenName: '',
+    familyName: '',
+    email: 'second@example.com'
+  }
+  profileClient.setQueryData(['profile', 'second-user'], profileState)
+  await act(async () => {
+    root!.render(render('second-user'))
+  })
+  assert.equal(
+    container.querySelector<HTMLInputElement>('#profile-name')!.value,
+    'Other account'
+  )
+  assert.equal(
+    container.querySelector<HTMLInputElement>('#profile-email')!.value,
+    'second@example.com'
+  )
 })
