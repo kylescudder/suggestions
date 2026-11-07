@@ -119,17 +119,17 @@ function layout({
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#312e81" style="background:#312e81;background-image:${brand.gradient}">
 <tr><td align="center" style="padding:40px 16px">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:480px">
-<tr><td style="padding:0 8px 24px">
-<table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr>
+<tr><td align="center" style="padding:0 8px 24px">
+<table role="presentation" align="center" cellpadding="0" cellspacing="0" border="0"><tr>
 <td style="padding-right:12px;vertical-align:middle"><img src="${origin}/email-logo.png" width="40" height="40" alt="" style="display:block;border:0;border-radius:9px"></td>
 <td style="vertical-align:middle;font-family:${font};font-size:22px;font-weight:700;color:#ffffff">${brand.name}</td>
 </tr></table>
 </td></tr>
-<tr><td bgcolor="#ffffff" style="background:#ffffff;border-radius:16px;padding:32px 28px;font-family:${font};color:${brand.ink}">
+<tr><td align="center" bgcolor="#ffffff" style="background:#ffffff;border-radius:16px;padding:32px 28px;text-align:center;font-family:${font};color:${brand.ink}">
 <h1 style="margin:0 0 12px;font-size:22px;line-height:1.3;font-weight:700;color:${brand.ink}">${escapeHtml(heading)}</h1>
 ${body}
 </td></tr>
-<tr><td style="padding:24px 8px 0;font-family:${font};font-size:12px;line-height:1.6;color:#c4b5fd">
+<tr><td align="center" style="padding:24px 8px 0;text-align:center;font-family:${font};font-size:12px;line-height:1.6;color:#c4b5fd">
 You’re receiving this because this address is an admin for ${brand.name} and a sign-in email was requested.<br>
 <a href="${origin}" style="color:#e9d5ff;text-decoration:underline">${site.host}</a>
 </td></tr>
@@ -224,7 +224,7 @@ export function renderLinkEmail(
       heading: copy.heading,
       body:
         paragraph(copy.intro) +
-        `<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:8px 0 24px"><tr><td bgcolor="${brand.purple}" style="background:${brand.purple};border-radius:10px"><a href="${href}" style="display:inline-block;padding:14px 28px;font-size:16px;font-weight:600;color:#ffffff;text-decoration:none;border-radius:10px">${copy.action}</a></td></tr></table>` +
+        `<table role="presentation" align="center" cellpadding="0" cellspacing="0" border="0" style="margin:8px auto 24px"><tr><td bgcolor="${brand.purple}" style="background:${brand.purple};border-radius:10px"><a href="${href}" style="display:inline-block;padding:14px 28px;font-size:16px;font-weight:600;color:#ffffff;text-decoration:none;border-radius:10px">${copy.action}</a></td></tr></table>` +
         paragraph(copy.expiry) +
         paragraph(
           `Button not working? Copy this link into your browser:<br><a href="${href}" style="color:${brand.purple};word-break:break-all">${href}</a>`,
