@@ -4,12 +4,13 @@ import { useQueryClient } from '@tanstack/react-query'
 import { Toaster } from 'sonner'
 import { MagicalSuggestionForm } from '@/components/MagicalSuggestionForm'
 import { AdminDashboard } from '@/components/AdminDashboard'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Shield, Sparkles } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { AdminSignIn } from '@/components/AdminSignIn'
 import { PasskeySettings } from '@/components/PasskeySettings'
 import { authClient } from '@/lib/auth-client'
+import { clearPendingSignIn, readPendingSignIn } from '@/lib/pending-sign-in'
 
 export const Route = createFileRoute('/')({
   component: Home
@@ -35,6 +36,9 @@ function BetterAuthHome() {
   const { data: session, isPending } = authClient.useSession()
   const queryClient = useQueryClient()
   const [error, setError] = useState('')
+  useEffect(() => {
+    if (session) clearPendingSignIn()
+  }, [session])
   async function signOut() {
     setError('')
     try {
@@ -48,6 +52,7 @@ function BetterAuthHome() {
   return (
     <SuggestionPage
       signedIn={!!session}
+      resumeSignIn
       account={
         <button
           onClick={() => void signOut()}
@@ -57,13 +62,10 @@ function BetterAuthHome() {
         </button>
       }
       signIn={
-        isPending ? (
-          <p role='status' className='py-12 text-center text-purple-100'>
-            Checking sign-in…
-          </p>
-        ) : (
-          <AdminSignIn onSignedIn={() => queryClient.clear()} />
-        )
+        <AdminSignIn
+          sessionPending={isPending}
+          onSignedIn={() => queryClient.clear()}
+        />
       }
       settings={session?.user.emailVerified ? <PasskeySettings /> : undefined}
       error={error}
@@ -76,15 +78,20 @@ function SuggestionPage({
   account,
   signIn,
   settings,
-  error
+  error,
+  resumeSignIn = false
 }: {
   signedIn: boolean
   account: ReactNode
   signIn: ReactNode
   settings?: ReactNode
   error?: string
+  resumeSignIn?: boolean
 }) {
   const [showAdmin, setShowAdmin] = useState(false)
+  useEffect(() => {
+    if (resumeSignIn && readPendingSignIn()) setShowAdmin(true)
+  }, [resumeSignIn])
 
   return (
     <div className='relative min-h-screen overflow-hidden bg-linear-to-br from-purple-900 via-blue-900 to-indigo-900'>

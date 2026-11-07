@@ -98,6 +98,14 @@ delivery-attempt budget (default 40 per rolling 24 hours), and per-IP auth limit
 Mail failures count toward the attempt budget. Health and public submissions
 do not call the mail provider.
 
+The code-entry form stays mounted while the auth client refreshes its session
+after a tab switch. For mobile page reloads, tab-scoped session storage retains
+only the pending email and request timestamp for ten minutes, reopening Admin
+without sending another email. It never stores the code or grants access. A
+successful sign-in or choosing another email clears this progress. Cooldown and
+expiry use elapsed wall time, including time spent in the mail app. If browser
+storage is blocked, the mounted form still works but cannot recover after a reload.
+
 To roll back, set `AUTH_PROVIDER=clerk` and recreate only the app service with
 the same image. Keep Clerk keys, its production app and DNS available. The
 retained previous image is another rollback option through the central service.

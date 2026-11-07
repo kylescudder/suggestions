@@ -1,29 +1,71 @@
 import { useEffect, useState } from 'react'
 import { KeyRound, Mail, ShieldCheck } from 'lucide-react'
 import { authClient } from '@/lib/auth-client'
+import {
+  clearPendingSignIn,
+  emailCodeLifetime,
+  readPendingSignIn,
+  savePendingSignIn
+} from '@/lib/pending-sign-in'
 
 const inputClass =
   'w-full rounded-lg border border-white/30 bg-white/10 px-4 py-3 text-white placeholder:text-purple-200/70 focus:outline-none focus:ring-2 focus:ring-purple-300'
 const buttonClass =
   'w-full rounded-lg bg-purple-400 px-4 py-3 font-semibold text-purple-950 transition hover:bg-purple-300 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-purple-200 disabled:cursor-wait disabled:opacity-60'
 
-export function AdminSignIn({ onSignedIn }: { onSignedIn: () => void }) {
+export function AdminSignIn({
+  onSignedIn,
+  sessionPending = false
+}: {
+  onSignedIn: () => void
+  sessionPending?: boolean
+}) {
   const [email, setEmail] = useState('')
   const [otp, setOtp] = useState('')
-  const [sent, setSent] = useState(false)
+  const [sentAt, setSentAt] = useState<number | null>(null)
+  const [now, setNow] = useState(Date.now)
   const [busy, setBusy] = useState(false)
-  const [cooldown, setCooldown] = useState(0)
   const [error, setError] = useState('')
+  const sent = sentAt !== null
+  const cooldown =
+    sentAt === null ? 0 : Math.max(0, Math.ceil((sentAt + 60_000 - now) / 1000))
+  const disabled = busy || sessionPending
 
   useEffect(() => {
-    if (!cooldown) return
-    const timer = setTimeout(() => setCooldown(cooldown - 1), 1000)
-    return () => clearTimeout(timer)
-  }, [cooldown])
+    const pending = readPendingSignIn()
+    if (pending) {
+      setEmail(pending.email)
+      setSentAt(pending.sentAt)
+      setNow(Date.now())
+    }
+  }, [])
+
+  useEffect(() => {
+    if (sentAt === null) return
+    const updateClock = () => setNow(Date.now())
+    const timer = setInterval(updateClock, 1000)
+    window.addEventListener('focus', updateClock)
+    document.addEventListener('visibilitychange', updateClock)
+    return () => {
+      clearInterval(timer)
+      window.removeEventListener('focus', updateClock)
+      document.removeEventListener('visibilitychange', updateClock)
+    }
+  }, [sentAt])
+
+  useEffect(() => {
+    if (sentAt === null || now - sentAt < emailCodeLifetime) return
+    clearPendingSignIn()
+    setSentAt(null)
+    setOtp('')
+    setError('That code has expired. Request a new code to continue.')
+  }, [now, sentAt])
 
   async function sendCode() {
+    if (disabled) return
     setBusy(true)
     setError('')
+    const requestedAt = Date.now()
     try {
       const result = await authClient.emailOtp.sendVerificationOtp({
         email: email.trim().toLowerCase(),
@@ -36,9 +78,13 @@ export function AdminSignIn({ onSignedIn }: { onSignedIn: () => void }) {
         )
         return
       }
-      setSent(true)
+      savePendingSignIn({
+        email: email.trim().toLowerCase(),
+        sentAt: requestedAt
+      })
+      setSentAt(requestedAt)
       setOtp('')
-      setCooldown(60)
+      setNow(Date.now())
     } catch {
       setError('Unable to reach sign-in. Please try again.')
     } finally {
@@ -47,6 +93,7 @@ export function AdminSignIn({ onSignedIn }: { onSignedIn: () => void }) {
   }
 
   async function verifyCode() {
+    if (disabled) return
     setBusy(true)
     setError('')
     try {
@@ -60,6 +107,7 @@ export function AdminSignIn({ onSignedIn }: { onSignedIn: () => void }) {
         )
         return
       }
+      clearPendingSignIn()
       onSignedIn()
     } catch {
       setError('Unable to reach sign-in. Please try again.')
@@ -69,6 +117,7 @@ export function AdminSignIn({ onSignedIn }: { onSignedIn: () => void }) {
   }
 
   async function signInWithPasskey() {
+    if (disabled) return
     setBusy(true)
     setError('')
     try {
@@ -79,6 +128,7 @@ export function AdminSignIn({ onSignedIn }: { onSignedIn: () => void }) {
         )
         return
       }
+      clearPendingSignIn()
       onSignedIn()
     } catch {
       setError(
@@ -105,6 +155,11 @@ export function AdminSignIn({ onSignedIn }: { onSignedIn: () => void }) {
         Use your admin email to get a sign-in code, or use a passkey you have
         already saved.
       </p>
+      {sessionPending && (
+        <p role='status' className='mb-4 text-purple-100'>
+          Checking sign-in…
+        </p>
+      )}
       <form
         onSubmit={(event) => {
           event.preventDefault()
@@ -126,7 +181,7 @@ export function AdminSignIn({ onSignedIn }: { onSignedIn: () => void }) {
             required
             maxLength={254}
             value={email}
-            disabled={busy || sent}
+            disabled={disabled || sent}
             onChange={(event) => setEmail(event.target.value)}
             className={inputClass}
           />
@@ -155,7 +210,7 @@ export function AdminSignIn({ onSignedIn }: { onSignedIn: () => void }) {
                 required
                 autoFocus
                 value={otp}
-                disabled={busy}
+                disabled={disabled}
                 onChange={(event) =>
                   setOtp(event.target.value.replace(/\D/g, '').slice(0, 6))
                 }
@@ -174,7 +229,7 @@ export function AdminSignIn({ onSignedIn }: { onSignedIn: () => void }) {
         )}
         <button
           type='submit'
-          disabled={busy || (sent && otp.length !== 6)}
+          disabled={disabled || (sent && otp.length !== 6)}
           className={buttonClass}
         >
           {busy ? (
@@ -193,7 +248,7 @@ export function AdminSignIn({ onSignedIn }: { onSignedIn: () => void }) {
         <div className='mt-4 flex flex-wrap justify-between gap-3 text-sm text-purple-100'>
           <button
             type='button'
-            disabled={busy || cooldown > 0}
+            disabled={disabled || cooldown > 0}
             onClick={() => void sendCode()}
             className='underline underline-offset-4 disabled:opacity-60'
           >
@@ -201,9 +256,10 @@ export function AdminSignIn({ onSignedIn }: { onSignedIn: () => void }) {
           </button>
           <button
             type='button'
-            disabled={busy}
+            disabled={disabled}
             onClick={() => {
-              setSent(false)
+              clearPendingSignIn()
+              setSentAt(null)
               setOtp('')
               setError('')
             }}
@@ -217,7 +273,7 @@ export function AdminSignIn({ onSignedIn }: { onSignedIn: () => void }) {
       <button
         type='button'
         onClick={() => void signInWithPasskey()}
-        disabled={busy}
+        disabled={disabled}
         className='flex w-full items-center justify-center gap-2 rounded-lg border border-white/30 px-4 py-3 font-medium text-white transition hover:bg-white/10 disabled:opacity-60'
       >
         <KeyRound className='h-4 w-4' />
