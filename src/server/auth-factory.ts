@@ -16,11 +16,21 @@ import { isAllowedAdminEmail, isVerifiedAdmin } from './auth-policy'
 import { userProfile } from './profile-schema'
 import { profileUpdateSchema } from './profile-validation'
 
-// Relative paths, or absolute URLs on this origin, only.
+const hasUnsafeCharacters = (value: string) =>
+  [...value].some((character) => {
+    const code = character.charCodeAt(0)
+    return code < 0x20 || code === 0x7f || character === '\\'
+  })
+
+// Relative paths, or absolute URLs on this origin, only. Resolve against the
+// origin rather than inspecting the string: URL parsing strips tabs/newlines
+// and treats backslashes as slashes, so `/\t/evil.example` would escape a
+// prefix check. Control characters and backslashes are refused outright.
 function isSameSiteTarget(target: unknown, origin: string) {
-  if (typeof target !== 'string' || target.includes('\\')) return false
-  if (target.startsWith('/')) return !target.startsWith('//')
-  return URL.canParse(target) && new URL(target).origin === origin
+  if (typeof target !== 'string' || hasUnsafeCharacters(target)) return false
+  return (
+    URL.canParse(target, origin) && new URL(target, origin).origin === origin
+  )
 }
 
 export type AuthSettings = {

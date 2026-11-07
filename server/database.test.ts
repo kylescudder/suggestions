@@ -1310,15 +1310,26 @@ test('password, reset links and magic links are allowlisted and sign-up stays cl
     200
   )
   assert.equal(fixture.links.length, 0)
-  assert.equal(
-    (
-      await fixture.request('/sign-in/magic-link', {
-        email: 'second@example.com',
-        callbackURL: 'https://attacker.example/'
-      })
-    ).status,
-    403
-  )
+  for (const callbackURL of [
+    'https://attacker.example/',
+    '//attacker.example/',
+    '/\t/attacker.example/',
+    '/\\attacker.example/'
+  ]) {
+    // Stay under the per-IP magic-link limit; this checks the redirect guard.
+    await owner`DELETE FROM auth_rate_limit`
+    assert.equal(
+      (
+        await fixture.request('/sign-in/magic-link', {
+          email: 'second@example.com',
+          callbackURL
+        })
+      ).status,
+      403,
+      JSON.stringify(callbackURL)
+    )
+  }
+  await owner`DELETE FROM auth_rate_limit`
   // Three reset requests above used this IP's per-minute allowance.
   await owner`DELETE FROM auth_rate_limit`
   assert.equal(

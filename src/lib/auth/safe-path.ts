@@ -2,10 +2,22 @@
 // open. A `?redirectTo=` on the auth route (e.g. from /profile) takes priority.
 export const adminHome = '/?view=admin'
 
+const hasUnsafeCharacters = (value: string) =>
+  [...value].some((character) => {
+    const code = character.charCodeAt(0)
+    return code < 0x20 || code === 0x7f || character === '\\'
+  })
+
 // Better Auth UI reads `?redirectTo=` from the URL as-is. Only follow
 // same-site paths so a crafted link cannot send someone off-site after sign-in.
+// Resolve against a placeholder origin instead of prefix-checking the string:
+// URL parsing strips tabs/newlines, so `/\t/evil.example` is not a safe path.
+const placeholder = 'https://suggestions.invalid'
 export function safeAppPath(to: string) {
-  return to.startsWith('/') && !to.startsWith('//') && !to.includes('\\')
-    ? to
+  if (!to.startsWith('/') || hasUnsafeCharacters(to)) return adminHome
+  if (!URL.canParse(to, placeholder)) return adminHome
+  const url = new URL(to, placeholder)
+  return url.origin === placeholder
+    ? url.pathname + url.search + url.hash
     : adminHome
 }

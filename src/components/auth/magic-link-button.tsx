@@ -1,6 +1,10 @@
 'use client'
 
-import { type AuthView, authMutationKeys } from '@better-auth-ui/core'
+import {
+  type AuthView,
+  authMutationKeys,
+  getAuthLinkURL
+} from '@better-auth-ui/core'
 import { useAuth, useAuthPlugin } from '@better-auth-ui/react'
 import { useIsMutating } from '@tanstack/react-query'
 import { Lock, Mail } from 'lucide-react'
@@ -20,8 +24,14 @@ export type MagicLinkButtonProps = {
  * @param view - Current auth view. On `"magicLink"` this links back to password sign-in.
  */
 export function MagicLinkButton({ view }: MagicLinkButtonProps) {
-  const { basePaths, emailAndPassword, viewPaths, localization, Link } =
-    useAuth()
+  const {
+    basePaths,
+    emailAndPassword,
+    viewPaths,
+    localization,
+    redirectTo,
+    Link
+  } = useAuth()
 
   const signInMutating = useIsMutating({
     mutationKey: authMutationKeys.signIn.all
@@ -44,7 +54,10 @@ export function MagicLinkButton({ view }: MagicLinkButtonProps) {
 
   return (
     <Link
-      href={`${basePaths.auth}/${isMagicLinkView ? viewPaths.auth.signIn : magicLinkViewPaths.auth.magicLink}`}
+      href={getAuthLinkURL(
+        `${basePaths.auth}/${isMagicLinkView ? viewPaths.auth.signIn : magicLinkViewPaths.auth.magicLink}`,
+        redirectTo
+      )}
       aria-disabled={isPending || undefined}
       tabIndex={isPending ? -1 : undefined}
       onClick={(event) => {
