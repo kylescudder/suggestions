@@ -3,6 +3,7 @@ import { Link, useNavigate } from '@tanstack/react-router'
 import { useQueryClient } from '@tanstack/react-query'
 import { AuthProvider } from '@/components/auth/auth-provider'
 import { passkeyPlugin } from '@/lib/auth/passkey-plugin'
+import { emailOtpPlugin } from '@/lib/auth/email-otp-plugin'
 import { authClient } from '@/lib/auth-client'
 import { profileFields, profileAvatar } from '@/lib/profile-ui'
 
@@ -23,8 +24,8 @@ export function BetterAuthUIProvider({ children }: { children: ReactNode }) {
       emailAndPassword={{ enabled: false }}
       additionalFields={profileFields}
       avatar={profileAvatar}
-      localization={{ auth: { name: 'Display name' } }}
-      plugins={[passkeyPlugin()]}
+      localization={{ auth: { name: 'Display name', signIn: 'Admin sign-in' } }}
+      plugins={[emailOtpPlugin(), passkeyPlugin()]}
     >
       {children}
     </AuthProvider>

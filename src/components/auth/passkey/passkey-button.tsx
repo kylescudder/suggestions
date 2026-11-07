@@ -16,6 +16,7 @@ import { useCallback, useMemo } from 'react'
 import { Button } from '@/components/ui/button'
 import { Spinner } from '@/components/ui/spinner'
 import { passkeyPlugin } from '@/lib/auth/passkey-plugin'
+import { clearPendingSignIn } from '@/lib/pending-sign-in'
 import { cn } from 'cn'
 
 export type PasskeyButtonProps = {
@@ -37,6 +38,7 @@ export function PasskeyButton({ view }: PasskeyButtonProps) {
   const queryClient = useQueryClient()
 
   const handleSuccess = useCallback(async () => {
+    clearPendingSignIn()
     await queryClient.invalidateQueries(
       { queryKey: authQueryKeys.session },
       { cancelRefetch: false }

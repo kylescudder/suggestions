@@ -3,12 +3,17 @@ import { createFileRoute, Link, useLoaderData } from '@tanstack/react-router'
 import { useQueryClient } from '@tanstack/react-query'
 import { MagicalSuggestionForm } from '@/components/MagicalSuggestionForm'
 import { AdminDashboard } from '@/components/AdminDashboard'
-import { useEffect, useState } from 'react'
+import { lazy, Suspense, useEffect, useState } from 'react'
 import { Shield, Sparkles, UserRound } from 'lucide-react'
 import type { ReactNode } from 'react'
-import { AdminSignIn } from '@/components/AdminSignIn'
 import { authClient } from '@/lib/auth-client'
 import { clearPendingSignIn, readPendingSignIn } from '@/lib/pending-sign-in'
+
+const BetterAuthSignIn = lazy(() =>
+  import('@/components/BetterAuthSignIn').then(({ BetterAuthSignIn }) => ({
+    default: BetterAuthSignIn
+  }))
+)
 
 export const Route = createFileRoute('/')({
   component: Home
@@ -68,10 +73,15 @@ function BetterAuthHome() {
         </>
       }
       signIn={
-        <AdminSignIn
-          sessionPending={isPending}
-          onSignedIn={() => queryClient.clear()}
-        />
+        <Suspense
+          fallback={
+            <p role='status' className='text-center text-white'>
+              Loading sign-in…
+            </p>
+          }
+        >
+          <BetterAuthSignIn sessionPending={isPending} />
+        </Suspense>
       }
       error={error}
     />

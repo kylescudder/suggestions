@@ -1,6 +1,6 @@
 # Third-party component notices
 
-The Better Auth UI shadcn components were installed from its official `radix-nova` registry on 7 November 2026. They are copied into `src/components/auth`, `src/components/ui` and `src/lib/auth`, as intended by the shadcn distribution model. Local adaptations preserve profile drafts, keep avatar deletion in sync with protected storage, and connect TanStack Router.
+The Better Auth UI shadcn components were installed from its official `radix-nova` registry on 7 November 2026. They are copied into `src/components/auth`, `src/components/ui` and `src/lib/auth`, as intended by the shadcn distribution model. Local adaptations preserve profile drafts, keep avatar deletion in sync with protected storage, and connect TanStack Router. The EmailOtp card and OtpField also retain Suggestions' tab-scoped email/request-time recovery, wall-clock cooldown/expiry, explicit code verification and generic admin-access message. Unsupported social, public sign-up and email/password-change views are omitted. Successful code or passkey sign-in opens Profile. The shadcn InputOTP icon placeholder is replaced with the configured Lucide icon.
 
 ## Better Auth UI
 
