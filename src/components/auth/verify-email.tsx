@@ -97,7 +97,7 @@ export function VerifyEmail({ className }: VerifyEmailProps) {
               <Button
                 type='button'
                 variant='outline'
-                disabled={!email || isCoolingDown || isPending}
+                disabled={isCoolingDown || isPending}
                 onClick={() =>
                   sendVerificationEmail({
                     email,
