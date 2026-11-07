@@ -5,6 +5,7 @@ import { getBetterAuth } from '@/server/auth'
 const paths = new Set([
   '/get-session',
   '/sign-out',
+  '/update-user',
   '/email-otp/send-verification-otp',
   '/sign-in/email-otp',
   '/passkey/generate-register-options',

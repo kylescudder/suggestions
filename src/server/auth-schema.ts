@@ -14,6 +14,8 @@ import {
 export const authUser = pgTable('auth_user', {
   id: text('id').primaryKey(),
   name: text('name').notNull(),
+  givenName: text('given_name').notNull().default(''),
+  familyName: text('family_name').notNull().default(''),
   email: text('email').notNull().unique(),
   emailVerified: boolean('email_verified').notNull().default(false),
   image: text('image'),

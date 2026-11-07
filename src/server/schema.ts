@@ -9,6 +9,7 @@ import {
 } from 'drizzle-orm/pg-core'
 
 export * from './auth-schema'
+export * from './profile-schema'
 
 export const suggestions = pgTable(
   'suggestions',

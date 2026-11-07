@@ -8,6 +8,7 @@ import {
 import type { ReactNode } from 'react'
 import styles from '@/styles.css?url'
 import { getAuthConfig } from '@/lib/auth-config'
+import { Toaster } from '@/components/ui/sonner'
 
 export const Route = createRootRoute({
   loader: () => getAuthConfig(),
@@ -30,10 +31,17 @@ export const Route = createRootRoute({
 
 function RootComponent() {
   const { provider } = Route.useLoaderData()
-  if (provider === 'better-auth') return <Outlet />
+  if (provider === 'better-auth')
+    return (
+      <>
+        <Outlet />
+        <Toaster />
+      </>
+    )
   return (
     <ClerkProvider>
       <Outlet />
+      <Toaster />
     </ClerkProvider>
   )
 }

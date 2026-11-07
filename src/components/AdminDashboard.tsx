@@ -200,12 +200,15 @@ export function AdminDashboard() {
               key={suggestion.id}
               className='magical-glow rounded-xl border border-white/20 bg-white/10 p-6 backdrop-blur-md'
             >
-              <div className='mb-4 flex items-start justify-between'>
-                <div className='flex-1'>
-                  <h3 className='mb-2 flex items-center gap-2 text-xl font-semibold text-white'>
-                    <Sparkles className='h-5 w-5' /> {suggestion.title}
+              <div className='mb-4 flex min-w-0 flex-col gap-4 sm:flex-row sm:items-start sm:justify-between'>
+                <div className='min-w-0 flex-1'>
+                  <h3 className='mb-2 flex items-start gap-2 text-xl font-semibold text-white'>
+                    <Sparkles className='mt-1 h-5 w-5 shrink-0' />
+                    <span className='min-w-0 wrap-anywhere'>
+                      {suggestion.title}
+                    </span>
                   </h3>
-                  <div className='mb-3 flex items-center gap-3'>
+                  <div className='mb-3 flex flex-wrap items-center gap-3'>
                     <span
                       className={`flex items-center gap-1 rounded-full border px-3 py-1 text-sm font-medium ${getStatusColor(suggestion.status)}`}
                     >
@@ -216,14 +219,15 @@ export function AdminDashboard() {
                     </span>
                   </div>
                   {(suggestion.authorName || suggestion.authorEmail) && (
-                    <p className='mb-3 text-sm text-purple-200'>
+                    <p className='mb-3 text-sm wrap-anywhere text-purple-200'>
                       By: {suggestion.authorName || 'Anonymous'}
                       {suggestion.authorEmail && ` (${suggestion.authorEmail})`}
                     </p>
                   )}
                 </div>
-                <div className='ml-4'>
+                <div className='w-full min-w-0 sm:w-auto sm:shrink-0'>
                   <select
+                    aria-label={`Status for ${suggestion.title}`}
                     value={suggestion.status}
                     onChange={(e) =>
                       handleStatusChange(
@@ -231,7 +235,7 @@ export function AdminDashboard() {
                         e.target.value as Status
                       )
                     }
-                    className='rounded-lg border border-white/30 bg-white/20 px-3 py-2 text-white backdrop-blur-xs focus:ring-2 focus:ring-purple-400 focus:outline-hidden'
+                    className='w-full max-w-full rounded-lg border border-white/30 bg-white/20 px-3 py-2 text-white backdrop-blur-xs focus:ring-2 focus:ring-purple-400 focus:outline-hidden sm:w-auto'
                   >
                     <option value='pending' className='bg-gray-800'>
                       Pending
@@ -248,7 +252,7 @@ export function AdminDashboard() {
                   </select>
                 </div>
               </div>
-              <p className='leading-relaxed text-purple-100'>
+              <p className='leading-relaxed wrap-anywhere text-purple-100'>
                 {suggestion.description}
               </p>
             </div>

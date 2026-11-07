@@ -1,7 +1,19 @@
 import { createAuthClient } from 'better-auth/react'
-import { emailOTPClient } from 'better-auth/client/plugins'
+import {
+  emailOTPClient,
+  inferAdditionalFields
+} from 'better-auth/client/plugins'
 import { passkeyClient } from '@better-auth/passkey/client'
 
 export const authClient = createAuthClient({
-  plugins: [emailOTPClient(), passkeyClient()]
+  plugins: [
+    emailOTPClient(),
+    passkeyClient(),
+    inferAdditionalFields({
+      user: {
+        givenName: { type: 'string', required: false, defaultValue: '' },
+        familyName: { type: 'string', required: false, defaultValue: '' }
+      }
+    })
+  ]
 })
