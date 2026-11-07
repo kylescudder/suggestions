@@ -59,7 +59,10 @@ export function UserProfile({ className }: UserProfileProps) {
         ...(profile.name && { name: value.name }),
         ...getAdditionalFieldSubmitValues(profileFields, value.additionalFields)
       })
-      form.reset(value)
+      // keepDefaultValues: useAuthForm re-applies its blank defaultValues on
+      // every render, so replacing them here would blank the form once the
+      // component next re-renders.
+      form.reset(value, { keepDefaultValues: true })
     }
   })
 
@@ -69,15 +72,18 @@ export function UserProfile({ className }: UserProfileProps) {
     // the session. A different account must always get its own form values.
     if (previousUserId.current === session.user.id && form.state.isDirty) return
     previousUserId.current = session.user.id
-    form.reset({
-      additionalFields: getAdditionalFieldDefaultValues(
-        fieldsWithModelValues(
-          profileFields,
-          session.user as Record<string, unknown>
-        )
-      ),
-      name: session.user.name
-    })
+    form.reset(
+      {
+        additionalFields: getAdditionalFieldDefaultValues(
+          fieldsWithModelValues(
+            profileFields,
+            session.user as Record<string, unknown>
+          )
+        ),
+        name: session.user.name
+      },
+      { keepDefaultValues: true }
+    )
   }, [form, form.state.isDirty, profileFields, session])
 
   if (!avatar.enabled && !hasProfileFields) return null
