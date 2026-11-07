@@ -74,42 +74,167 @@ async function deliver(
   }
 }
 
-const page = (body: string) =>
-  `<html><body style="margin:0;background:#312e81;font-family:system-ui,sans-serif;color:#fff"><div style="max-width:460px;margin:0 auto;padding:40px 24px"><h1 style="font-size:24px">Suggestions</h1>${body}</div></body></html>`
+// Branded, table-based layout: email clients ignore most modern CSS, and many
+// (Gmail included) do not render SVG, so the logo is a PNG served by the app.
+const brand = {
+  name: 'Magical Ideas',
+  purple: '#7e22ce',
+  ink: '#1e1b4b',
+  muted: '#6b7280',
+  gradient: 'linear-gradient(135deg,#581c87 0%,#1e3a8a 50%,#312e81 100%)'
+}
+
+const escapeHtml = (value: string) =>
+  value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+
+function layout({
+  origin,
+  preheader,
+  heading,
+  body
+}: {
+  origin: string
+  preheader: string
+  heading: string
+  body: string
+}) {
+  const site = new URL(origin)
+  const font =
+    "-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif"
+  return `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="light">
+<meta name="supported-color-schemes" content="light">
+<title>${escapeHtml(heading)}</title>
+</head>
+<body style="margin:0;padding:0;background:#312e81">
+<div style="display:none;max-height:0;overflow:hidden;opacity:0">${escapeHtml(preheader)}</div>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#312e81" style="background:#312e81;background-image:${brand.gradient}">
+<tr><td align="center" style="padding:40px 16px">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:480px">
+<tr><td align="center" style="padding:0 8px 24px">
+<table role="presentation" align="center" cellpadding="0" cellspacing="0" border="0"><tr>
+<td style="padding-right:12px;vertical-align:middle"><img src="${origin}/email-logo.png" width="40" height="40" alt="" style="display:block;border:0;border-radius:9px"></td>
+<td style="vertical-align:middle;font-family:${font};font-size:22px;font-weight:700;color:#ffffff">${brand.name}</td>
+</tr></table>
+</td></tr>
+<tr><td align="center" bgcolor="#ffffff" style="background:#ffffff;border-radius:16px;padding:32px 28px;text-align:center;font-family:${font};color:${brand.ink}">
+<h1 style="margin:0 0 12px;font-size:22px;line-height:1.3;font-weight:700;color:${brand.ink}">${escapeHtml(heading)}</h1>
+${body}
+</td></tr>
+<tr><td align="center" style="padding:24px 8px 0;text-align:center;font-family:${font};font-size:12px;line-height:1.6;color:#c4b5fd">
+You’re receiving this because this address is an admin for ${brand.name} and a sign-in email was requested.<br>
+<a href="${origin}" style="color:#e9d5ff;text-decoration:underline">${site.host}</a>
+</td></tr>
+</table>
+</td></tr>
+</table>
+</body>
+</html>`
+}
+
+const paragraph = (text: string, color: string = brand.ink) =>
+  `<p style="margin:0 0 16px;font-size:15px;line-height:1.6;color:${color}">${text}</p>`
+
+export function renderCodeEmail(origin: string, otp: string) {
+  // Only validated generated six-digit codes are interpolated into the template.
+  if (!/^\d{6}$/.test(otp)) throw new Error('Invalid sign-in code format')
+  return {
+    subject: `${otp} is your Suggestions sign-in code`,
+    text: `Your ${brand.name} sign-in code is ${otp}.\n\nIt expires in 10 minutes and can be used once. If you did not request this code, ignore this email.\n\n${origin}`,
+    html: layout({
+      origin,
+      preheader: `Your sign-in code is ${otp}. It expires in 10 minutes.`,
+      heading: 'Your sign-in code',
+      body:
+        paragraph('Enter this code to sign in to your admin dashboard.') +
+        `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:8px 0 24px"><tr><td align="center" bgcolor="#f5f3ff" style="background:#f5f3ff;border:1px solid #ddd6fe;border-radius:12px;padding:20px 2px 20px 12px;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:34px;font-weight:700;letter-spacing:10px;color:${brand.purple}">${otp}</td></tr></table>` +
+        paragraph('It expires in 10 minutes and can be used once.') +
+        paragraph(
+          'If you didn’t request this code, you can ignore this email.',
+          brand.muted
+        )
+    })
+  }
+}
 
 export async function sendLoginEmail(
   config: MailConfig,
+  origin: string,
   email: string,
   otp: string
 ) {
-  // Only validated generated six-digit codes are interpolated into the template.
-  if (!/^\d{6}$/.test(otp)) throw new Error('Invalid sign-in code format')
-  await deliver(config, email, {
-    subject: `${otp} is your Suggestions sign-in code`,
-    text: `Your Suggestions sign-in code is ${otp}.\n\nIt expires in 10 minutes and can be used once. If you did not request this code, ignore this email.`,
-    html: page(
-      `<p>Use this code to sign in to your admin dashboard.</p><p style="font-size:36px;font-weight:700;letter-spacing:8px;background:#4338ca;padding:24px;border-radius:12px;text-align:center">${otp}</p><p>Expires in 10 minutes. This code can be used once.</p><p style="color:#ddd6fe">If you did not request this code, you can ignore this email.</p>`
-    )
-  })
+  await deliver(config, email, renderCodeEmail(origin, otp))
 }
 
 export type LinkEmailKind = 'magic-link' | 'reset-password'
 
 const linkCopy: Record<
   LinkEmailKind,
-  { subject: string; intro: string; action: string; expiry: string }
+  {
+    subject: string
+    heading: string
+    intro: string
+    action: string
+    expiry: string
+  }
 > = {
   'magic-link': {
     subject: 'Your Suggestions sign-in link',
-    intro: 'Use this link to sign in to your admin dashboard.',
-    action: 'Sign in to Suggestions',
-    expiry: 'It expires in 10 minutes and can be used once.'
+    heading: 'Sign in to Magical Ideas',
+    intro: 'Tap the button below to sign in to your admin dashboard.',
+    action: 'Sign in',
+    expiry: 'This link expires in 10 minutes and can be used once.'
   },
   'reset-password': {
     subject: 'Set your Suggestions password',
-    intro: 'Use this link to set a new password for your admin account.',
+    heading: 'Set your password',
+    intro:
+      'Tap the button below to choose a new password for your admin account.',
     action: 'Set password',
-    expiry: 'It expires in 30 minutes and can be used once.'
+    expiry: 'This link expires in 30 minutes and can be used once.'
+  }
+}
+
+export function renderLinkEmail(
+  origin: string,
+  kind: LinkEmailKind,
+  url: string
+) {
+  // Links are generated by Better Auth; refuse anything not on this origin so a
+  // misconfiguration can never mail out a link to another site.
+  const parsed = new URL(url)
+  if (parsed.origin !== origin)
+    throw new Error('Unexpected sign-in link origin')
+  const href = escapeHtml(parsed.href)
+  const copy = linkCopy[kind]
+  return {
+    subject: copy.subject,
+    text: `${copy.intro}\n\n${parsed.href}\n\n${copy.expiry} If you did not request this, ignore this email.`,
+    html: layout({
+      origin,
+      preheader: `${copy.intro} ${copy.expiry}`,
+      heading: copy.heading,
+      body:
+        paragraph(copy.intro) +
+        `<table role="presentation" align="center" cellpadding="0" cellspacing="0" border="0" style="margin:8px auto 24px"><tr><td bgcolor="${brand.purple}" style="background:${brand.purple};border-radius:10px"><a href="${href}" style="display:inline-block;padding:14px 28px;font-size:16px;font-weight:600;color:#ffffff;text-decoration:none;border-radius:10px">${copy.action}</a></td></tr></table>` +
+        paragraph(copy.expiry) +
+        paragraph(
+          `Button not working? Copy this link into your browser:<br><a href="${href}" style="color:${brand.purple};word-break:break-all">${href}</a>`,
+          brand.muted
+        ) +
+        paragraph(
+          'If you didn’t request this, you can ignore this email.',
+          brand.muted
+        )
+    })
   }
 }
 
@@ -120,18 +245,5 @@ export async function sendLinkEmail(
   kind: LinkEmailKind,
   url: string
 ) {
-  // Links are generated by Better Auth; refuse anything not on this origin so a
-  // misconfiguration can never mail out a link to another site.
-  const parsed = new URL(url)
-  if (parsed.origin !== origin)
-    throw new Error('Unexpected sign-in link origin')
-  const href = parsed.href.replace(/&/g, '&amp;').replace(/"/g, '&quot;')
-  const copy = linkCopy[kind]
-  await deliver(config, email, {
-    subject: copy.subject,
-    text: `${copy.intro}\n\n${parsed.href}\n\n${copy.expiry} If you did not request this, ignore this email.`,
-    html: page(
-      `<p>${copy.intro}</p><p style="text-align:center;margin:32px 0"><a href="${href}" style="display:inline-block;background:#7e22ce;color:#fff;text-decoration:none;font-weight:600;padding:14px 24px;border-radius:10px">${copy.action}</a></p><p>${copy.expiry}</p><p style="color:#ddd6fe">If you did not request this, you can ignore this email.</p>`
-    )
-  })
+  await deliver(config, email, renderLinkEmail(origin, kind, url))
 }
