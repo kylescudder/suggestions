@@ -98,6 +98,13 @@ delivery-attempt budget (default 40 per rolling 24 hours), and per-IP auth limit
 Mail failures count toward the attempt budget. Health and public submissions
 do not call the mail provider.
 
+Sign-in uses the official Better Auth UI shadcn `EmailOtp`, `OtpField` and
+`PasskeyButton` components, with a neutral card and the app's purple accent.
+The auth UI loads when Admin is opened; anonymous submissions do not load it.
+Successful email-code or passkey sign-in opens `/profile` for account settings.
+Verification requires the explicit Verify code button, including after pasting
+or autofilling all six digits. Email codes remain the recovery method.
+
 The code-entry form stays mounted while the auth client refreshes its session
 after a tab switch. For mobile page reloads, tab-scoped session storage retains
 only the pending email and request timestamp for ten minutes, reopening Admin
@@ -125,9 +132,9 @@ The Better Auth account link opens `/profile`, using the official Better Auth UI
 shadcn `UserProfile` and `Passkeys` components. The page has a display name,
 optional first/last names, a read-only verified email, photo management and
 passkeys. Registry components live in `src/components/auth` and `src/components/ui`;
-see `THIRD_PARTY_NOTICES.md` for provenance and local adaptations. Profile UI is
-loaded with its route, not on the initial public page. The existing email-code
-flow retains its mobile focus/reload recovery. Password, signup, email-change
+see `THIRD_PARTY_NOTICES.md` for provenance and local adaptations. The auth UI
+loads with Profile or when opening Admin, not on the initial public page. The
+registry email-code flow retains its mobile focus/reload recovery. Password, signup, email-change
 and unrelated account-management surfaces remain disabled. Reauthentication for
 passkey enrollment returns to the profile's existing email-code sign-in.
 

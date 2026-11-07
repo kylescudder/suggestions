@@ -51,13 +51,7 @@ function BetterAuthProfile() {
   useEffect(() => {
     if (session) clearPendingSignIn()
   }, [session])
-  if (!session)
-    return (
-      <AdminSignIn
-        sessionPending={isPending}
-        onSignedIn={() => queryClient.clear()}
-      />
-    )
+  if (!session) return <AdminSignIn sessionPending={isPending} />
   async function signOut() {
     setSigningOut(true)
     setError('')
