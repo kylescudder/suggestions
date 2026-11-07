@@ -19,3 +19,8 @@ automated tests. React apps also run `bun run lint`; static Astro sites use
 Container builds disable hook installation with `HUSKY=0` (or skip lifecycle
 scripts). Dependencies are installed explicitly after pulling changes; there
 is no automatic post-merge install.
+
+`bun run test` runs the server/database suite and then the client DOM suite in
+separate Bun processes. This keeps browser globals and cached auth-client modules
+isolated from server rendering. The server suite needs a disposable PostgreSQL
+service supplied as `TEST_DATABASE_URL`; do not point it at an application database.
