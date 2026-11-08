@@ -6,6 +6,7 @@ import {
 } from '@tanstack/react-router'
 import { SignIn, UserProfile, useAuth } from '@clerk/tanstack-react-start'
 import { useQueryClient } from '@tanstack/react-query'
+import { useSession } from '@better-auth-ui/react'
 import { useEffect, useState } from 'react'
 import { authClient } from '@/lib/auth-client'
 import { ChangePassword } from '@/components/auth/settings/security/change-password'
@@ -43,7 +44,10 @@ function ClerkProfile() {
 }
 
 function BetterAuthProfile() {
-  const { data: session, isPending } = authClient.useSession()
+  // Better Auth UI's session query, not the client's nanostore: sign-in awaits
+  // this query before navigating here, while the nanostore can still hold the
+  // signed-out value from a "Sign in again" round trip and bounce to sign-in.
+  const { data: session, isPending } = useSession(authClient)
   const queryClient = useQueryClient()
   const navigate = useNavigate()
   const [error, setError] = useState('')

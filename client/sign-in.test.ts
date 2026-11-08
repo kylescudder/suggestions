@@ -26,6 +26,9 @@ let AuthUIProvider: typeof import('../src/components/auth/auth-provider').AuthPr
 let profileUI: typeof import('../src/lib/profile-ui')
 let emailOtpUI: typeof import('../src/lib/auth/email-otp-plugin')
 let passkeyUI: typeof import('../src/lib/auth/passkey-plugin')
+let AddPasskeyDialog: typeof import('../src/components/auth/passkey/add-passkey-dialog').AddPasskeyDialog
+let registerOptionsRequests = 0
+let signOuts = 0
 let profileSession = false
 let profileUserId = 'first-user'
 let queryTools: typeof import('@tanstack/react-query')
@@ -57,6 +60,10 @@ beforeAll(async () => {
     Image: browser.Image,
     Event: browser.Event,
     InputEvent: browser.InputEvent,
+    // Radix dialogs dispatch these when they open and trap focus.
+    CustomEvent: browser.CustomEvent,
+    FocusEvent: browser.FocusEvent,
+    KeyboardEvent: browser.KeyboardEvent,
     HTMLTextAreaElement: browser.HTMLTextAreaElement,
     HTMLSelectElement: browser.HTMLSelectElement,
     HTMLButtonElement: browser.HTMLButtonElement,
@@ -99,6 +106,21 @@ beforeAll(async () => {
         profileState = { ...profileState, image: null }
         return Response.json(profileState)
       }
+      if (url.pathname === '/api/auth/passkey/generate-register-options') {
+        registerOptionsRequests++
+        // What production returned: the session is older than freshAge (1 h).
+        return Response.json(
+          { message: 'Session is not fresh', code: 'SESSION_NOT_FRESH' },
+          { status: 403, statusText: 'Forbidden' }
+        )
+      }
+      if (url.pathname === '/api/auth/sign-out') {
+        signOuts++
+        profileSession = false
+        return Response.json({ success: true })
+      }
+      if (url.pathname === '/api/auth/passkey/list-user-passkeys')
+        return Response.json([])
       if (url.pathname === '/api/auth/update-user') {
         profileSave = JSON.parse(init?.body as string)
         profileState = { ...profileState, ...(profileSave as Partial<Profile>) }
@@ -168,6 +190,8 @@ beforeAll(async () => {
   profileUI = await import('../src/lib/profile-ui')
   emailOtpUI = await import('../src/lib/auth/email-otp-plugin')
   passkeyUI = await import('../src/lib/auth/passkey-plugin')
+  ;({ AddPasskeyDialog } =
+    await import('../src/components/auth/passkey/add-passkey-dialog'))
   queryTools = await import('@tanstack/react-query')
 })
 
@@ -181,6 +205,8 @@ beforeEach(() => {
   lastVerify = undefined
   delaySession = false
   releaseSession = undefined
+  registerOptionsRequests = 0
+  signOuts = 0
   profileSession = false
   profileUserId = 'first-user'
   profileSave = undefined
@@ -581,4 +607,75 @@ test('failed send stays on the shadcn email form without saving progress or send
   await act(async () => root!.unmount())
   await mount()
   assert.equal(sends, 1)
+})
+
+test('adding a passkey with a stale session offers "Sign in again" and returns to the profile', async () => {
+  profileSession = true
+  browser.happyDOM.setURL('https://suggestions.auth.test/profile')
+  const navigations: string[] = []
+  profileClient = new queryTools.QueryClient({
+    defaultOptions: { queries: { retry: false }, mutations: { retry: false } }
+  })
+  root = createRoot(container)
+  try {
+    await act(async () => {
+      root!.render(
+        createElement(
+          AuthUIProvider,
+          {
+            authClient,
+            queryClient: profileClient,
+            navigate: ({ to }) => {
+              navigations.push(to)
+            },
+            emailAndPassword: { enabled: false },
+            plugins: [passkeyUI.passkeyPlugin()]
+          },
+          createElement(AddPasskeyDialog, {
+            open: true,
+            onOpenChange: () => {}
+          })
+        )
+      )
+      await new Promise((resolve) => setTimeout(resolve, 30))
+    })
+    // The dialog renders in a portal on document.body.
+    const dialog = () => document.querySelector('[role="dialog"]')!
+    assert.ok(dialog(), 'Add passkey dialog missing')
+    const name = dialog().querySelector<HTMLInputElement>('input[name="name"]')!
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(
+        browser.HTMLInputElement.prototype,
+        'value'
+      )!.set!.call(name, '1Password')
+      name.dispatchEvent(browserEvent('input'))
+    })
+    await act(async () => {
+      dialog()
+        .querySelector('form')!
+        .dispatchEvent(browserEvent('submit', true))
+      await new Promise((resolve) => setTimeout(resolve, 30))
+    })
+    assert.equal(registerOptionsRequests, 1)
+    // Before the fix the 403 resolved as { error }, so the form stayed put
+    // with no message and no way forward.
+    assert.ok(
+      !dialog().querySelector('input[name="name"]'),
+      'Dialog stayed on the form after SESSION_NOT_FRESH'
+    )
+    const signInAgain = Array.from(dialog().querySelectorAll('button')).find(
+      (button) => button.textContent?.trim() === 'Sign in again'
+    )
+    assert.ok(signInAgain, 'Sign in again button missing')
+    await act(async () => {
+      signInAgain.click()
+      await new Promise((resolve) => setTimeout(resolve, 30))
+    })
+    assert.equal(signOuts, 1)
+    assert.deepEqual(navigations, [
+      '/auth/sign-in?reauthenticate=true&redirectTo=%2Fprofile'
+    ])
+  } finally {
+    browser.happyDOM.setURL('https://suggestions.auth.test')
+  }
 })
