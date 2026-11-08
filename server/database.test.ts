@@ -967,6 +967,46 @@ test('rate limits persist across independent auth instances', async () => {
   assert.ok((await owner`SELECT id FROM auth_rate_limit`).length > 0)
 })
 
+test('a throttled allowlisted address gets the same answer as an unlisted one', async () => {
+  const fixture = await authFixture()
+  const endpoints = [
+    ['/email-otp/send-verification-otp', { type: 'sign-in' }],
+    ['/sign-in/magic-link', { callbackURL: '/admin' }],
+    ['/request-password-reset', { redirectTo: '/auth/reset-password' }]
+  ] as const
+  const answer = async (path: string, extra: object, email: string) => {
+    const response = await fixture.request(path, { email, ...extra })
+    return { status: response.status, body: await response.text() }
+  }
+  assert.equal(
+    (await answer(endpoints[0][0], endpoints[0][1], 'admin@example.com'))
+      .status,
+    200
+  )
+  const code = fixture.sent.get('admin@example.com')
+  for (const [path, extra] of endpoints) {
+    const throttled = await answer(path, extra, 'admin@example.com')
+    const unlisted = await answer(path, extra, 'stranger@example.com')
+    assert.deepEqual(throttled, unlisted, path)
+    assert.equal(throttled.status, 200, path)
+  }
+  // Nothing more was sent or charged, and the first code still works.
+  assert.equal(fixture.links.length, 0)
+  assert.equal(fixture.sent.get('admin@example.com'), code)
+  const [global] =
+    await owner`SELECT count FROM auth_email_limit WHERE key = 'global:day'`
+  assert.equal(global.count, 1)
+  assert.equal(
+    (
+      await fixture.request('/sign-in/email-otp', {
+        email: 'admin@example.com',
+        otp: code
+      })
+    ).status,
+    200
+  )
+})
+
 test('a permitted resend rotates the code and cannot revive older verification records', async () => {
   const fixture = await authFixture()
   const send = () =>
@@ -1225,12 +1265,14 @@ test('password, reset links and magic links are allowlisted and sign-up stays cl
     password
   })
   assert.equal(noPassword.status, 401)
-  // The sign-in code used this address's one-email-a-minute allowance.
+  // The sign-in code used this address's one-email-a-minute allowance. The
+  // refusal looks exactly like the answer for an address that gets no mail.
   const tooSoon = await fixture.request('/request-password-reset', {
     email: 'admin@example.com',
     redirectTo: '/auth/reset-password'
   })
-  assert.equal(tooSoon.status, 429)
+  assert.equal(tooSoon.status, 200)
+  assert.deepEqual(await tooSoon.json(), { status: true })
   assert.equal(fixture.links.length, 0)
   await owner`DELETE FROM auth_email_limit`
 
