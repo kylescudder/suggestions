@@ -23,7 +23,6 @@
     "@better-auth-ui/react": "1.7.33",
     "@better-auth/drizzle-adapter": "1.7.18",
     "@better-auth/passkey": "1.7.18",
-    "@clerk/tanstack-react-start": "1.7.6",
     "@t3-oss/env-core": "^0.13.11",
     "@tanstack/react-form": "1.33.5",
     "@tanstack/react-query": "5.104.5",

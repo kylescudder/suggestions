@@ -39,39 +39,20 @@ service is a rollback target. Evidence is in the platform's
 `verification/suggestions-netlify-removal.json` and
 `verification/suggestions-convex-removal.json`.
 
-Clerk's `Suggestions` production instance uses
-`clerk.suggestions.kylescudder.co.uk` and
-`accounts.suggestions.kylescudder.co.uk`. Its five CNAME records are DNS-only,
-with dedicated email/DKIM records under `suggestions.kylescudder.co.uk`.
-Production keys are in the protected `.env` and encrypted NAS backup. The
-The host 1Password service account can read the Clerk dashboard login but cannot
-create vault items, so no separate API-key item was saved there.
-
-The initial admin is `kyle@kylescudder.co.uk`, using Clerk email-code sign-in.
-The app also checks the verified email against `ADMIN_EMAILS` on the server.
-Public browser submission, asset delivery, signed-out/invalid-token rejection
-and the runtime Clerk admin lookup passed. Kyle completed email-code sign-in
-in the collaborative browser on 17 October 2026. The authenticated dashboard,
-admin identity check, suggestion list and statistics all passed, showing the
-one imported rejected suggestion. Evidence is recorded in
+The admin is `kyle@kylescudder.co.uk`. The server checks the verified email
+against `ADMIN_EMAILS`. Admin acceptance evidence is recorded in
 `/Users/kyle/platform/verification/suggestions-admin-acceptance.json`.
 
-## Better Auth rollout and Clerk rollback
+## Authentication
 
-`AUTH_PROVIDER` selects exactly one authentication provider for both the server
-and the rendered client. It defaults to `clerk` so the additive release can be
-deployed before changing the production sign-in flow. Runtime provider changes
-require recreating the app container; do not try to hot-swap its process environment.
-
-The owner migration adds `auth_user`, `auth_session`, `auth_account`,
+Better Auth is the only authentication provider. The owner migration adds `auth_user`, `auth_session`, `auth_account`,
 `auth_verification`, `auth_passkey`, `auth_rate_limit` and `auth_email_limit`.
 It does not rewrite suggestions or attach anonymous submissions to new user IDs.
 The runtime still uses its existing four-connection pool and restricted role.
 
-Prepare these settings in the host's protected `.env`, retaining the Clerk keys:
+These settings are required in the host's protected `.env`:
 
 ```dotenv
-AUTH_PROVIDER=clerk
 BETTER_AUTH_URL=https://suggestions.kylescudder.co.uk
 BETTER_AUTH_SECRET=<stable, cryptographically random app-specific secret>
 BREVO_API_KEY=<Suggestions transactional API key>
@@ -82,16 +63,13 @@ AUTH_EMAIL_DAILY_LIMIT=40
 Generate a secret of at least 32 characters and keep it stable across releases.
 Keep it and the sending API key out of Git, image layers and CI. `ADMIN_EMAILS`
 remains the server-side allowlist. Codes can create accounts only for allowlisted
-emails; each admin must prove email ownership again instead of trusting a
-client-provided or imported Clerk user ID. The passkey RP ID is the exact
+emails; each admin proves email ownership instead of trusting a
+client-provided user ID. The passkey RP ID is the exact
 hostname in `BETTER_AUTH_URL`, with that same trusted HTTPS origin.
 
-First deploy the image through the central service. After owner migrations and
-the existing acceptance checks pass, set `AUTH_PROVIDER=better-auth` and recreate
-only the `suggestions` service using the retained current image. Verify the
-public form and assets, anonymous submission, signed-out admin rejection,
-email-code sign-in, the authenticated dashboard, and passkey enrollment/sign-in.
-Email codes are six digits, valid once for ten minutes, with five attempts.
+After a release, verify the public form and assets, anonymous submission,
+signed-out admin rejection, email-code sign-in, the authenticated dashboard, and
+passkey enrollment/sign-in. Email codes are six digits, valid once for ten minutes, with five attempts.
 The database stores a keyed hash of each code. Persistent limits include a
 60-second recipient resend cooldown, five sends per recipient/hour, an app-wide
 delivery-attempt budget (default 40 per rolling 24 hours), and per-IP auth limits.
@@ -131,11 +109,11 @@ successful sign-in or choosing another email clears this progress. Cooldown and
 expiry use elapsed wall time, including time spent in the mail app. If browser
 storage is blocked, the mounted form still works but cannot recover after a reload.
 
-To roll back, set `AUTH_PROVIDER=clerk` and recreate only the app service with
-the same image. Keep Clerk keys, its production app and DNS available. The
-retained previous image is another rollback option through the central service.
-Leave the additive auth tables in place; never restore an older database just
-to change providers, because that would discard newer anonymous submissions.
+Leave the auth tables in place; never restore an older database to roll back
+authentication, because that would discard newer anonymous submissions. Images
+built before the provider switch was removed default to the retired provider, so
+rolling back to one of them needs `AUTH_PROVIDER=better-auth` in `.env`. Settings
+left over from the retired provider are ignored and can be deleted.
 
 Brevo's free plan automatically adds a `List-Unsubscribe` header even to these
 transactional emails, which can produce a mailing-list banner in email clients.
@@ -157,8 +135,7 @@ and unrelated account-management surfaces remain disabled. Reauthentication for
 passkey enrollment returns to the profile's existing email-code sign-in.
 
 Names and pictures belong to the signed-in account. Email-code sign-in does not
-discover names or import a Clerk profile. Clerk rollback keeps its existing
-native profile component.
+discover names or import a profile from elsewhere.
 
 The `0002_profile` migration adds first/last name columns with empty
 string defaults to `auth_user`, plus one `user_profile` table for a processed
@@ -190,8 +167,8 @@ TypeScript and the frontend build, owner migrations and restricted runtime
 database access in disposable PostgreSQL, deployment rollback/provenance gates,
 and receiver signature/path/queue behavior. Native AMD64 and ARM64 builders
 publish `ghcr.io/kylescudder/suggestions` with GitHub provenance. GitHub holds
-only deployment credentials and the public Clerk publishable-key variable;
-Clerk secrets and production database credentials remain on the host.
+only deployment credentials; auth secrets and production database credentials
+remain on the host.
 The release job includes a read-only, job-lifetime registry token in its signed
 request so the host can verify and pull private GHCR images. The host removes its
 temporary registry configuration after the pull and omits this token from state
@@ -214,8 +191,8 @@ metadata. The host publishes that record after database/API checks finish;
 a responding candidate alone cannot make CI report success.
 `DEPLOY_ENABLED=true` and
 `SUGGESTIONS_BASE_URL=https://suggestions.kylescudder.co.uk` control deployment.
-The Clerk publishable key is read at runtime from the host's `.env`, so the image
-has no build-time configuration.
+Auth settings are read at runtime from the host's `.env`, so the image has no
+build-time configuration.
 
 Private receiver settings are `.env.deploy-hook` and `secrets/`. Release
 history, queued delivery and failure records are under `state/`; the latest
@@ -242,17 +219,16 @@ Create `.env` with mode 0600, using unquoted, single-line values:
 ```dotenv
 DATABASE_URL=postgres://suggestions_runtime:<runtime-password>@postgres:5432/suggestions
 PORT=3001
-CLERK_PUBLISHABLE_KEY=<Clerk publishable key>
-CLERK_SECRET_KEY=<matching Clerk secret key>
-CLERK_AUTHORIZED_PARTIES=https://suggestions.kylescudder.co.uk
+BETTER_AUTH_URL=https://suggestions.kylescudder.co.uk
+BETTER_AUTH_SECRET=<stable, cryptographically random app-specific secret>
+BREVO_API_KEY=<Suggestions transactional API key>
+AUTH_EMAIL_FROM=suggestions@kylescudder.co.uk
 ADMIN_EMAILS=kyle@kylescudder.co.uk
 ```
 
 Read the runtime password directly from
 `/Users/kyle/platform/projects/suggestions/runtime-password`; URL-encode it
 when constructing `DATABASE_URL`. Keep credentials out of logs and commits.
-Configure Clerk for the public origin, with the intended sign-in methods and
-verified admin email. Use production Clerk keys for production.
 
 Commit application and deployment changes, then run:
 
@@ -295,7 +271,7 @@ python3 scripts/hostname.py add suggestions suggestions.kylescudder.co.uk --upst
 The original Netlify DNS record is retained privately at
 `/Users/kyle/platform/verification/suggestions-netlify-dns-before.json`.
 The initial cutover removed that exact conflicting record only after private
-health and Clerk TLS checks passed, then registered the route using the
+health and TLS checks passed, then registered the route using the
 hostname tool. The public release and Spooktober were checked afterwards.
 Evidence is `verification/suggestions-cutover.json` in the platform root.
 Future registrations use the managed record normally. The old DNS record is
@@ -304,7 +280,7 @@ tool past a new conflict or edit its registry. Convex is also deleted; recovery
 uses the retained the host image or encrypted Postgres backup.
 
 Verify public HTTPS, assets, suggestion submission and signed-out rejection
-of listing/statistics/status updates. Verify an actual Clerk admin sign-in
+of listing/statistics/status updates. Verify an actual admin sign-in
 before declaring that flow accepted. Check an existing the host site as well.
 
 ## Updates and rollback
@@ -332,9 +308,7 @@ Netlify is no longer available for traffic rollback; do not restore its saved
 CNAME. Recover the application on the host using a retained image or rebuild the
 recorded repository revision, and use the encrypted database backup when a data
 restore is needed. Preserve current submissions and reconcile any writes before
-restoring older data. Keep Clerk's dedicated DNS records intact.
-The public Clerk key is baked into the frontend, so a key change needs a rebuild;
-rolling back across Clerk-instance changes needs matching configuration too.
+restoring older data.
 
 Routine commands are `docker compose ps`, `docker compose config --quiet` and
 `docker compose logs --tail 50`. Never print resolved Compose output, `.env` or

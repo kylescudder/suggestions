@@ -1,12 +1,13 @@
 # Suggestions
 
-A [TanStack Start](https://tanstack.com/start) app with a [tRPC](https://trpc.io) API, served by [Bun](https://bun.sh), backed by Postgres via [Drizzle](https://orm.drizzle.team), with auth by [Clerk](https://clerk.com).
+A [TanStack Start](https://tanstack.com/start) app with a [tRPC](https://trpc.io) API, served by [Bun](https://bun.sh), backed by Postgres via [Drizzle](https://orm.drizzle.team), with auth by [Better Auth](https://better-auth.com).
 
 ## Setup
 
 1. Copy `.env.example` to `.env` and fill it in:
    - `DATABASE_URL` for your Postgres database
-   - Clerk publishable/secret keys from the Clerk dashboard
+   - `BETTER_AUTH_URL`, `BETTER_AUTH_SECRET` (at least 32 characters), and the
+     `BREVO_API_KEY` and `AUTH_EMAIL_FROM` used to send sign-in emails
    - `ADMIN_EMAILS`: verified email addresses allowed into the admin dashboard
 2. `bun install`
 
@@ -34,7 +35,7 @@ For the host's container deployment, database provisioning and rollback, see
 Server settings are validated with `@t3-oss/env-core` and Zod when they are read.
 Production builds need no runtime credentials. Invalid settings report their names
 without logging secret values; see `.env.example` for the deployment settings.
-Migration commands validate database settings independently of Clerk configuration.
+Migration commands validate database settings independently of auth configuration.
 
 ## Database tests
 

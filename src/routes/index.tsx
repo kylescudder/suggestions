@@ -1,5 +1,4 @@
-import { SignIn, UserButton, useAuth } from '@clerk/tanstack-react-start'
-import { createFileRoute, Link, useLoaderData } from '@tanstack/react-router'
+import { createFileRoute, Link } from '@tanstack/react-router'
 import { MagicalSuggestionForm } from '@/components/MagicalSuggestionForm'
 import { AdminDashboard } from '@/components/AdminDashboard'
 import { lazy, Suspense, useEffect, useState } from 'react'
@@ -22,28 +21,8 @@ export const Route = createFileRoute('/')({
 })
 
 function Home() {
-  const { provider } = useLoaderData({ from: '__root__' })
   const { view } = Route.useSearch()
-  return provider === 'clerk' ? (
-    <ClerkHome openAdmin={view === 'admin'} />
-  ) : (
-    <BetterAuthHome openAdmin={view === 'admin'} />
-  )
-}
-
-function ClerkHome({ openAdmin }: { openAdmin: boolean }) {
-  const { isSignedIn } = useAuth()
-  return (
-    <SuggestionPage
-      signedIn={!!isSignedIn}
-      openAdmin={openAdmin}
-      account={<UserButton />}
-      signIn={<SignIn routing='hash' />}
-    />
-  )
-}
-
-function BetterAuthHome({ openAdmin }: { openAdmin: boolean }) {
+  const openAdmin = view === 'admin'
   const { data: session } = authClient.useSession()
   useEffect(() => {
     if (session) clearPendingSignIn()
@@ -59,7 +38,6 @@ function BetterAuthHome({ openAdmin }: { openAdmin: boolean }) {
           <BetterAuthUserMenu />
         </Suspense>
       }
-      signInHref='/auth/sign-in'
     />
   )
 }
@@ -67,15 +45,11 @@ function BetterAuthHome({ openAdmin }: { openAdmin: boolean }) {
 function SuggestionPage({
   signedIn,
   openAdmin,
-  account,
-  signIn,
-  signInHref
+  account
 }: {
   signedIn: boolean
   openAdmin: boolean
   account: ReactNode
-  signIn?: ReactNode
-  signInHref?: string
 }) {
   const [showAdmin, setShowAdmin] = useState(openAdmin)
   useEffect(() => {
@@ -112,41 +86,22 @@ function SuggestionPage({
                 </button>
                 {account}
               </>
-            ) : signInHref ? (
+            ) : (
               <Link
-                to={signInHref}
+                to='/auth/$path'
+                params={{ path: 'sign-in' }}
                 className='flex items-center gap-2 rounded-lg border border-white/30 bg-white/20 px-4 py-2 text-white backdrop-blur-xs transition-all duration-300 hover:bg-white/30'
               >
                 <Shield className='h-4 w-4' />
                 <span>Admin</span>
               </Link>
-            ) : (
-              <button
-                onClick={() => setShowAdmin(!showAdmin)}
-                className='flex items-center gap-2 rounded-lg border border-white/30 bg-white/20 px-4 py-2 text-white backdrop-blur-xs transition-all duration-300 hover:bg-white/30'
-              >
-                <Shield className='h-4 w-4' />
-                <span>Admin</span>
-              </button>
             )}
           </div>
         </div>
       </header>
 
       <main className='relative z-10 flex-1 px-4 py-8 sm:px-8'>
-        {signedIn ? (
-          showAdmin ? (
-            <>
-              <AdminDashboard />
-            </>
-          ) : (
-            <MagicalSuggestionForm />
-          )
-        ) : showAdmin && signIn ? (
-          signIn
-        ) : (
-          <MagicalSuggestionForm />
-        )}
+        {signedIn && showAdmin ? <AdminDashboard /> : <MagicalSuggestionForm />}
       </main>
     </div>
   )

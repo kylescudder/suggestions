@@ -1,16 +1,10 @@
-import {
-  createFileRoute,
-  Link,
-  useLoaderData,
-  useNavigate
-} from '@tanstack/react-router'
-import { SignIn, UserProfile, useAuth } from '@clerk/tanstack-react-start'
+import { createFileRoute, Link, useNavigate } from '@tanstack/react-router'
 import { useQueryClient } from '@tanstack/react-query'
 import { useSession } from '@better-auth-ui/react'
 import { useEffect, useState } from 'react'
 import { authClient } from '@/lib/auth-client'
 import { ChangePassword } from '@/components/auth/settings/security/change-password'
-import { UserProfile as BetterAuthUserProfile } from '@/components/auth/settings/account/user-profile'
+import { UserProfile } from '@/components/auth/settings/account/user-profile'
 import { Passkeys } from '@/components/auth/passkey/passkeys'
 import { clearPendingSignIn } from '@/lib/pending-sign-in'
 import { BetterAuthUIProvider } from '@/components/BetterAuthUIProvider'
@@ -18,7 +12,6 @@ import { BetterAuthUIProvider } from '@/components/BetterAuthUIProvider'
 export const Route = createFileRoute('/profile')({ component: ProfilePage })
 
 function ProfilePage() {
-  const { provider } = useLoaderData({ from: '__root__' })
   return (
     <div className='min-h-screen bg-linear-to-br from-purple-900 via-blue-900 to-indigo-900 px-4 py-8 text-white sm:px-8'>
       <main className='mx-auto w-full max-w-3xl'>
@@ -26,21 +19,12 @@ function ProfilePage() {
           Back to Suggestions
         </Link>
         <h1 className='mt-6 mb-8 text-3xl font-bold'>Your profile</h1>
-        {provider === 'better-auth' ? (
-          <BetterAuthUIProvider redirectTo='/profile'>
-            <BetterAuthProfile />
-          </BetterAuthUIProvider>
-        ) : (
-          <ClerkProfile />
-        )}
+        <BetterAuthUIProvider redirectTo='/profile'>
+          <BetterAuthProfile />
+        </BetterAuthUIProvider>
       </main>
     </div>
   )
-}
-
-function ClerkProfile() {
-  const { isSignedIn } = useAuth()
-  return isSignedIn ? <UserProfile routing='hash' /> : <SignIn routing='hash' />
 }
 
 function BetterAuthProfile() {
@@ -85,7 +69,7 @@ function BetterAuthProfile() {
   }
   return (
     <>
-      <BetterAuthUserProfile key={session.user.id} />
+      <UserProfile key={session.user.id} />
       <div className='mt-8'>
         <ChangePassword />
       </div>

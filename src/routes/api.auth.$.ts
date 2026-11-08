@@ -1,5 +1,4 @@
 import { createFileRoute } from '@tanstack/react-router'
-import { readEnv } from '@/server/env'
 import { getBetterAuth } from '@/server/auth'
 
 const paths = new Set([
@@ -28,8 +27,7 @@ async function handler(request: Request) {
   const path = new URL(request.url).pathname.slice('/api/auth'.length)
   // The emailed reset link lands on /reset-password/<token> before redirecting.
   const allowed = paths.has(path) || /^\/reset-password\/[\w-]+$/.test(path)
-  if (readEnv().AUTH_PROVIDER !== 'better-auth' || !allowed)
-    return new Response('Not found', { status: 404 })
+  if (!allowed) return new Response('Not found', { status: 404 })
   return getBetterAuth().handler(request)
 }
 
