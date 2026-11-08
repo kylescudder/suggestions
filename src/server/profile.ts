@@ -6,10 +6,8 @@ import { createProfileHandler } from './profile-handler'
 
 export function handleProfileRequest(request: Request) {
   const env = readEnv()
-  if (env.AUTH_PROVIDER !== 'better-auth')
-    return new Response('Not found', { status: 404 })
   return createProfileHandler(db, {
-    origin: env.BETTER_AUTH_URL!,
+    origin: env.BETTER_AUTH_URL,
     adminEmails: env.ADMIN_EMAILS,
     getSession: (headers) => getBetterAuth().api.getSession({ headers })
   })(request)

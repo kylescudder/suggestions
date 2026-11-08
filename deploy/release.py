@@ -62,8 +62,8 @@ def main():
     else:
         if run("git", "status", "--porcelain", capture=True).strip():
             raise SystemExit("Commit the application and deployment changes before releasing")
-        required = ("DATABASE_URL", "CLERK_SECRET_KEY", "CLERK_PUBLISHABLE_KEY",
-                    "ADMIN_EMAILS", "CLERK_AUTHORIZED_PARTIES")
+        required = ("DATABASE_URL", "ADMIN_EMAILS", "BETTER_AUTH_URL", "BETTER_AUTH_SECRET",
+                    "BREVO_API_KEY", "AUTH_EMAIL_FROM")
         missing = [key for key in required if not config.get(key) or "..." in config[key]]
         if missing:
             raise SystemExit("Configure these .env fields first: " + ", ".join(missing))

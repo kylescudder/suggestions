@@ -1,9 +1,4 @@
-import {
-  createFileRoute,
-  Link,
-  Navigate,
-  useLoaderData
-} from '@tanstack/react-router'
+import { createFileRoute, Link, Navigate } from '@tanstack/react-router'
 import { Sparkles } from 'lucide-react'
 import { Auth } from '@/components/auth/auth'
 import { BetterAuthUIProvider } from '@/components/BetterAuthUIProvider'
@@ -11,10 +6,7 @@ import { BetterAuthUIProvider } from '@/components/BetterAuthUIProvider'
 export const Route = createFileRoute('/auth/$path')({ component: AuthPage })
 
 function AuthPage() {
-  const { provider } = useLoaderData({ from: '__root__' })
   const { path } = Route.useParams()
-  // Clerk keeps its own sign-in on the homepage; these routes are Better Auth only.
-  if (provider !== 'better-auth') return <Navigate to='/' />
   // Admin accounts are never self-registered.
   if (path === 'sign-up')
     return <Navigate to='/auth/$path' params={{ path: 'sign-in' }} replace />

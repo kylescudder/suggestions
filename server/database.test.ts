@@ -63,9 +63,6 @@ const originalEnv = Object.fromEntries(
   [
     'DATABASE_URL',
     'SUGGESTIONS_REVISION',
-    'CLERK_PUBLISHABLE_KEY',
-    'CLERK_SECRET_KEY',
-    'AUTH_PROVIDER',
     'BETTER_AUTH_URL',
     'BETTER_AUTH_SECRET',
     'BREVO_API_KEY',
@@ -141,9 +138,6 @@ beforeAll(async () => {
   proxy.allowNewConnections()
   process.env.DATABASE_URL = proxy.url
   process.env.SUGGESTIONS_REVISION = 'health-probe-test'
-  process.env.CLERK_PUBLISHABLE_KEY = 'pk_test_ZXhhbXBsZS5jb20k'
-  process.env.CLERK_SECRET_KEY = 'sk_test_fixture'
-  process.env.AUTH_PROVIDER = 'better-auth'
   process.env.BETTER_AUTH_URL = authOrigin
   process.env.BETTER_AUTH_SECRET = randomUUID() + randomUUID()
   process.env.BREVO_API_KEY = 'fixture-never-used-to-send'

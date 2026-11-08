@@ -9,7 +9,7 @@ import {
   uniqueIndex
 } from 'drizzle-orm/pg-core'
 
-// Separate, additive tables: Clerk rollback never requires removing auth data
+// Separate, additive tables: auth changes never require removing auth data
 // or restoring an older copy of anonymous suggestions.
 export const authUser = pgTable('auth_user', {
   id: text('id').primaryKey(),

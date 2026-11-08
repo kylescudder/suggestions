@@ -3,8 +3,11 @@ import { readDatabaseEnv, readEnv } from '../src/server/env'
 
 const valid = {
   DATABASE_URL: 'postgres://fixture:password@localhost:5432/app',
-  CLERK_PUBLISHABLE_KEY: 'public-fixture',
-  CLERK_SECRET_KEY: 'secret-fixture'
+  BETTER_AUTH_URL: 'https://suggestions.example.com',
+  BETTER_AUTH_SECRET:
+    'fixture-secret-that-is-longer-than-thirty-two-characters',
+  BREVO_API_KEY: 'fixture-api-key',
+  AUTH_EMAIL_FROM: 'suggestions@example.com'
 }
 
 test('valid runtime settings are typed and use the app defaults', () => {
@@ -50,77 +53,50 @@ test('configuration errors identify fields without printing secret values', () =
   }
 })
 
-test('missing Clerk credentials fail runtime validation', () => {
-  expect(() => readEnv({ ...valid, CLERK_SECRET_KEY: '' })).toThrow(
-    'CLERK_SECRET_KEY'
-  )
-  expect(() => readEnv({ ...valid, CLERK_PUBLISHABLE_KEY: undefined })).toThrow(
-    'CLERK_PUBLISHABLE_KEY'
-  )
-})
-
-test('Better Auth settings are required only when it is selected', () => {
-  const better = {
-    DATABASE_URL: valid.DATABASE_URL,
-    AUTH_PROVIDER: 'better-auth',
-    BETTER_AUTH_URL: 'https://suggestions.example.com',
-    BETTER_AUTH_SECRET:
-      'fixture-secret-that-is-longer-than-thirty-two-characters',
-    BREVO_API_KEY: 'fixture-api-key',
-    AUTH_EMAIL_FROM: 'suggestions@example.com'
-  }
-  expect(readEnv(better).AUTH_PROVIDER).toBe('better-auth')
-  expect(readEnv(better).CLERK_SECRET_KEY).toBeUndefined()
-  expect(readEnv(better).AUTH_EMAIL_DAILY_LIMIT).toBe(40)
+test('Better Auth settings are required', () => {
+  expect(readEnv(valid).AUTH_EMAIL_DAILY_LIMIT).toBe(40)
   for (const key of [
     'BETTER_AUTH_URL',
     'BETTER_AUTH_SECRET',
     'BREVO_API_KEY',
     'AUTH_EMAIL_FROM'
-  ])
-    expect(() => readEnv({ ...better, [key]: '' })).toThrow(key)
-  expect(() => readEnv({ ...better, BETTER_AUTH_SECRET: 'short' })).toThrow(
+  ]) {
+    expect(() => readEnv({ ...valid, [key]: '' })).toThrow(key)
+    expect(() => readEnv({ ...valid, [key]: undefined })).toThrow(key)
+  }
+  expect(() => readEnv({ ...valid, BETTER_AUTH_SECRET: 'short' })).toThrow(
     'BETTER_AUTH_SECRET'
   )
   expect(() =>
     readEnv({
-      ...better,
+      ...valid,
       NODE_ENV: 'production',
       BETTER_AUTH_URL: 'http://suggestions.example.com'
     })
   ).toThrow('BETTER_AUTH_URL')
-  expect(() => readEnv({ ...better, AUTH_EMAIL_DAILY_LIMIT: '301' })).toThrow(
+  expect(() => readEnv({ ...valid, AUTH_EMAIL_DAILY_LIMIT: '301' })).toThrow(
     'AUTH_EMAIL_DAILY_LIMIT'
   )
-  expect(() => readEnv({ ...valid, AUTH_PROVIDER: 'unknown' })).toThrow(
-    'AUTH_PROVIDER'
-  )
-  // Keeping the Clerk keys available is supported for a configuration rollback.
-  expect(
-    readEnv({ ...valid, ...better, AUTH_PROVIDER: 'clerk' }).AUTH_PROVIDER
-  ).toBe('clerk')
 })
 
-test('admin emails and allowed origins are validated and normalized', () => {
+test('retired provider settings left in the host .env are ignored', () => {
   const env = readEnv({
     ...valid,
-    ADMIN_EMAILS: ' Admin@example.com, second@example.com ',
-    CLERK_AUTHORIZED_PARTIES:
-      ' https://ideas.example.com/, http://localhost:3001 '
+    AUTH_PROVIDER: 'retired-provider',
+    RETIRED_PROVIDER_SECRET_KEY: 'leftover'
+  })
+  expect(env.BETTER_AUTH_URL).toBe(valid.BETTER_AUTH_URL)
+  expect('AUTH_PROVIDER' in env).toBe(false)
+})
+
+test('admin emails are validated and normalized', () => {
+  const env = readEnv({
+    ...valid,
+    ADMIN_EMAILS: ' Admin@example.com, second@example.com '
   })
   expect(env.ADMIN_EMAILS).toEqual(['admin@example.com', 'second@example.com'])
-  expect(env.CLERK_AUTHORIZED_PARTIES).toEqual([
-    'https://ideas.example.com',
-    'http://localhost:3001'
-  ])
-  expect(
-    readEnv({ ...valid, ADMIN_EMAILS: '', CLERK_AUTHORIZED_PARTIES: '' })
-      .ADMIN_EMAILS
-  ).toEqual([])
+  expect(readEnv({ ...valid, ADMIN_EMAILS: '' }).ADMIN_EMAILS).toEqual([])
   expect(() => readEnv({ ...valid, ADMIN_EMAILS: 'invalid' })).toThrow(
     'ADMIN_EMAILS'
   )
-  expect(() =>
-    readEnv({ ...valid, CLERK_AUTHORIZED_PARTIES: 'https://example.com/path' })
-  ).toThrow('CLERK_AUTHORIZED_PARTIES')
 })

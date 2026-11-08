@@ -13,7 +13,7 @@ const { default: app } = (await import(serverEntry)) as {
 
 const checkHealth = createHealthCheck(env.DATABASE_URL)
 
-// Served before the app, so health doesn't depend on Clerk or page rendering.
+// Served before the app, so health doesn't depend on auth or page rendering.
 async function health() {
   const headers = { 'Cache-Control': 'no-store' }
   try {
