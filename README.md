@@ -46,3 +46,8 @@ health-probe cancellation/recovery, plus application connection reuse, idle reti
 and reconnection. Fixtures are created and removed by test hooks,
 and modified runtime environment values are restored after the suite.
 The deployment receiver continues to run through its separate Node test command.
+
+`bun run test` runs the server/database suite and then the client DOM suite in
+separate Bun processes. This keeps browser globals and cached auth-client modules
+isolated from server rendering. Only the server suite needs `TEST_DATABASE_URL`;
+point it at a disposable PostgreSQL service, never at an application database.
