@@ -1,6 +1,23 @@
 import { randomUUID } from 'node:crypto'
-import { expect, test } from '@playwright/test'
+import { expect, test, type Page } from '@playwright/test'
 import { checkpoint } from './evidence'
+
+// The filtered list keeps the previous list on screen while it reloads, so a
+// filter is only confirmed once every idea shown carries the chosen status.
+async function expectOnlyStatus(page: Page, status: string) {
+  await expect
+    .poll(() =>
+      page
+        .locator('select[aria-label^="Status for"]')
+        .evaluateAll(
+          (selects, wanted) =>
+            selects.length > 0 &&
+            selects.every((s) => (s as HTMLSelectElement).value === wanted),
+          status
+        )
+    )
+    .toBe(true)
+}
 
 test('an admin changes an idea status and the filtered list follows', async ({
   page
@@ -30,6 +47,7 @@ test('an admin changes an idea status and the filtered list follows', async ({
   // Filtering to pending must drop the reviewed idea from the list.
   await page.locator('.cursor-pointer', { hasText: 'Pending' }).first().click()
   await expect(page.getByText(/Showing pending suggestions/)).toBeVisible()
+  await expectOnlyStatus(page, 'pending')
   await expect(
     page.getByRole('heading', { name: title, exact: true })
   ).toHaveCount(0)
@@ -41,6 +59,8 @@ test('an admin changes an idea status and the filtered list follows', async ({
     .getByRole('button', { name: 'Admin Dashboard', exact: true })
     .click()
   await page.locator('.cursor-pointer', { hasText: 'Reviewed' }).first().click()
+  await expect(page.getByText(/Showing reviewed suggestions/)).toBeVisible()
+  await expectOnlyStatus(page, 'reviewed')
   await expect(page.getByLabel(`Status for ${title}`)).toHaveValue('reviewed')
   await checkpoint(page, info, 'reviewed-filter-after-reload')
 })
