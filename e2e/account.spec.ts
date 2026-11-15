@@ -1,6 +1,9 @@
 import { randomUUID } from 'node:crypto'
 import { expect, test } from '@playwright/test'
-test('a signed-in profile remains available after reload', async ({ page }) => {
+import { checkpoint } from './evidence'
+test('a signed-in profile remains available after reload', async ({
+  page
+}, testInfo) => {
   await page.goto('/profile')
   await expect(
     page.getByRole('button', { name: 'Sign out', exact: true })
@@ -9,10 +12,11 @@ test('a signed-in profile remains available after reload', async ({ page }) => {
   await expect(
     page.getByRole('button', { name: 'Sign out', exact: true })
   ).toBeVisible()
+  await checkpoint(page, testInfo, 'profile-after-reload')
 })
 test('a signed-out visitor must sign in to open their profile', async ({
   browser
-}) => {
+}, testInfo) => {
   const context = await browser.newContext({
     storageState: { cookies: [], origins: [] }
   })
@@ -21,6 +25,7 @@ test('a signed-out visitor must sign in to open their profile', async ({
     await page.goto(process.env.E2E_BASE_URL + '/profile')
     await expect(page).toHaveURL(/\/auth\/sign-in/)
     await expect(page.locator('#password')).toBeVisible()
+    await checkpoint(page, testInfo, 'signed-out-redirected-to-sign-in')
   } finally {
     await context.close()
   }
@@ -41,6 +46,7 @@ test('an idea is saved and appears in the admin dashboard after reload', async (
   await expect(
     page.getByText('✨ Your magical idea has been captured!')
   ).toBeVisible()
+  await checkpoint(page, info, 'idea-captured')
   await page
     .getByRole('button', { name: 'Admin Dashboard', exact: true })
     .click()
@@ -55,4 +61,5 @@ test('an idea is saved and appears in the admin dashboard after reload', async (
     page.getByRole('heading', { name: title, exact: true })
   ).toBeVisible()
   await page.screenshot({ path: info.outputPath('ideas.png'), fullPage: true })
+  await checkpoint(page, info, 'idea-listed-after-reload')
 })
