@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto'
 import { expect, test } from '@playwright/test'
 test('a signed-in profile remains available after reload', async ({ page }) => {
   await page.goto('/profile')
@@ -31,7 +32,7 @@ test('an idea is saved and appears in the admin dashboard after reload', async (
   await page.goto('/')
   const submit = page.getByRole('button', { name: '✨ Share Your Magic ✨' })
   await expect(submit).toBeDisabled()
-  const title = `A quiet workspace ${info.project.name}`
+  const title = `A quiet workspace ${info.project.name} ${randomUUID()}`
   await page.getByLabel('Your Magical Idea').fill(title)
   await page
     .getByLabel('Tell us more about your magic')

@@ -125,6 +125,9 @@ async function seedUser(databaseUrl: string) {
   const userId = randomUUID()
   const sql = postgres(databaseUrl, { max: 1, onnotice: () => {} })
   try {
+    // Reused disposable databases must start a new run's auth budget.
+    // Rate limits remain enabled and accumulate normally within the run.
+    await sql`TRUNCATE auth_rate_limit`
     await sql`INSERT INTO auth_user (id, name, email, email_verified)
       VALUES (${userId}, 'E2E Tester', ${email}, true)`
     await sql`INSERT INTO auth_account (id, account_id, provider_id, user_id, password)
