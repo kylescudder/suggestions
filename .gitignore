@@ -31,3 +31,6 @@ deploy-spool/
 *.njsproj
 *.sln
 *.sw?
+
+# Browser reports and session artifacts
+state/e2e/
