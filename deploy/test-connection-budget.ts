@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto'
 import { createDeploymentDatabase } from './database'
 import postgres from 'postgres'
 function connect(url: string, max: number) {
-  return adapt(postgres(url, { max, connect_timeout: 3, onnotice: () => {} }))
+  return adapt(postgres(url, { max, connect_timeout: 2, onnotice: () => {} }))
 }
 function adapt(pool: ReturnType<typeof postgres>): Client {
   return {

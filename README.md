@@ -37,13 +37,18 @@ Production builds need no runtime credentials. Invalid settings report their nam
 without logging secret values; see `.env.example` for the deployment settings.
 Migration commands validate database settings independently of auth configuration.
 
+Every database client sets `connect_timeout: 2`. postgres.js v4 retries a
+connection refused for too many connections (`53300`) until that timeout, so a
+full connection limit fails a request in about 3 seconds. See
+[Database connection budget](deploy/README.md#database-connection-budget).
+
 ## Database tests
 
-`TEST_DATABASE_URL=postgres://... bun run test` runs the env checks and five named
+`TEST_DATABASE_URL=postgres://... bun run test` runs the env checks and six named
 Bun integration tests against an explicitly supplied disposable PostgreSQL service:
 repeatable migrations, restricted-role permissions, API validation/auth, and
-health-probe cancellation/recovery, plus application connection reuse, idle retirement
-and reconnection. Fixtures are created and removed by test hooks,
+health-probe cancellation/recovery, application connection reuse, idle retirement
+and reconnection, plus fast `53300` rejection when a role's connection limit is full. Fixtures are created and removed by test hooks,
 and modified runtime environment values are restored after the suite.
 The deployment receiver continues to run through its separate Node test command.
 

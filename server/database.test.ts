@@ -4,6 +4,7 @@ import { afterAll, beforeAll, test } from 'bun:test'
 import { randomUUID } from 'node:crypto'
 import postgres from 'postgres'
 import sharp from 'sharp'
+import { createDeploymentDatabase } from '../deploy/database'
 import { stallHealthQueries } from '../deploy/postgres-proxy'
 import { virtualAuthenticator } from './webauthn-fixture'
 
@@ -11,6 +12,7 @@ if (!process.env.TEST_DATABASE_URL)
   throw new Error('TEST_DATABASE_URL must point to disposable PostgreSQL')
 const admin = postgres(process.env.TEST_DATABASE_URL, {
   max: 1,
+  connect_timeout: 2,
   onnotice: () => {}
 })
 const name = 'suggestions_ci_' + randomUUID().replaceAll('-', '').slice(0, 10)
@@ -26,7 +28,11 @@ function client(user: string, database = name) {
   url.username = user
   url.password = ''
   url.pathname = '/' + database
-  const sql = postgres(url.toString(), { max: 1, onnotice: () => {} })
+  const sql = postgres(url.toString(), {
+    max: 1,
+    connect_timeout: 2,
+    onnotice: () => {}
+  })
   clients.push(sql)
   return sql
 }
@@ -393,6 +399,63 @@ test('application pool reuses connections, retires idle backends and reconnects'
   const [reconnected] = await applicationSql`SELECT pg_backend_pid() AS pid`
   assert.notEqual(reconnected.pid, first.pid)
 }, 30000)
+
+test('application and deployment clients fail fast when the role connection limit is full', async () => {
+  // postgres.js v4 retries 53300 until connect_timeout; the clients keep it short.
+  const role = name + '_limited'
+  await admin.unsafe(
+    `CREATE ROLE "${role}" LOGIN NOSUPERUSER CONNECTION LIMIT 1`
+  )
+  await admin.unsafe(`GRANT CONNECT ON DATABASE "${name}" TO "${role}"`)
+  const url = new URL(process.env.TEST_DATABASE_URL!)
+  url.username = role
+  url.password = ''
+  url.pathname = '/' + name
+  const holder = postgres(url.toString(), {
+    max: 1,
+    connect_timeout: 2,
+    onnotice: () => {}
+  })
+  const deployment = createDeploymentDatabase(url.toString())
+  try {
+    await holder`SELECT 1`
+    // The application pool reads DATABASE_URL on import, so time it in its own process.
+    const child = Bun.spawn(
+      [
+        'bun',
+        '-e',
+        `const { sql } = await import('./src/server/db.ts')
+        const started = performance.now()
+        const code = await sql\`SELECT 1\`.then(() => 'connected', (error) => error.code)
+        console.log(JSON.stringify({ code, ms: performance.now() - started }))
+        await sql.end({ timeout: 0 })`
+      ],
+      {
+        cwd: new URL('..', import.meta.url).pathname,
+        env: { ...process.env, DATABASE_URL: url.toString() },
+        stdout: 'pipe',
+        stderr: 'inherit'
+      }
+    )
+    const application = JSON.parse(await new Response(child.stdout).text())
+    assert.equal(await child.exited, 0)
+    assert.equal(application.code, '53300')
+    assert.ok(application.ms < 5000, `application waited ${application.ms} ms`)
+
+    const started = performance.now()
+    await assert.rejects(
+      Promise.resolve(deployment`SELECT 1`),
+      (error: unknown) => (error as { code?: string }).code === '53300'
+    )
+    const waited = performance.now() - started
+    assert.ok(waited < 5000, `deployment client waited ${waited} ms`)
+  } finally {
+    await deployment.end({ timeout: 0 })
+    await holder.end({ timeout: 1 })
+    await admin.unsafe(`REVOKE CONNECT ON DATABASE "${name}" FROM "${role}"`)
+    await admin.unsafe(`DROP ROLE "${role}"`)
+  }
+}, 20000)
 
 let fixtureNumber = 0
 async function authFixture(dailyEmailLimit = 40, failMail = false) {

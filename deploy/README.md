@@ -330,3 +330,11 @@ CI exercises the real deployment client against an eight-connection test role,
 with all four application slots held open. Concurrent deployment queries must
 share one backend, health must still connect, two spare slots must remain usable,
 and a ninth connection must be rejected by PostgreSQL.
+
+PostgreSQL refuses a connection over the role limit with `53300`. Since
+postgres.js v4, the client retries that refusal with backoff until
+`connect_timeout` has passed instead of failing at once. Every client here (the
+application pool, health check, deployment client, migrations and tests) sets
+`connect_timeout: 2`, so a request that cannot get a connection fails in about
+3 seconds instead of waiting. The database tests check this against a role
+with a connection limit of one.
